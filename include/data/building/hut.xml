@@ -1,0 +1,8 @@
+<cbg_building>
+	<name>Holzhütte</name>
+	<image>hut</image>
+	<description>Eine etwas stabilere Heimatbasis mit Fundament.</description>
+	<value>20</value>
+	<level>1</level>
+	<is>homebase</is>
+</cbg_building>

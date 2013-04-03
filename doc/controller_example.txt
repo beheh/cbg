@@ -1,0 +1,75 @@
+
+Beispielstrukutur:
+
+|- _index.php
+|- abc.php
+|- def.inc.php
+|- def
+| |- _index.php
+| |- _default.php
+| |- _quit.php
+| |- ghi.php
+|- foo
+| |- _default.php
+| |- bar.php
+|- def.php
+
+Beispiele:
+
+Pfad: foo
+- Suche Verzeichnis 'foo'
+  > Gefunden
+  - Suche 'foo.inc.php'
+    > Nicht gefunden
+  - Suche'foo/_index.php'
+    > Nicht gefundedn
+    - Suche 'foo/_default.php'
+      > Gefunden
+      - Inkludiere 'foo/_default.php'
+
+Pfad: foo/3
+- Suche Verzeichnis 'foo'
+  > Gefunden
+  - Suche 'foo.inc.php'
+    > Nicht gefunden
+  - Suche'foo/3.php'
+    > Nicht gefunden
+    - Suche 'foo/_default.php'
+      > Gefunden
+      - Setze Parameter 0 auf 3
+      - Inkludiere 'foo/_default.php'
+
+Pfad: foo/bar
+- Suche Verzeichnis 'foo'
+  > Gefunden
+  - Suche 'foo.inc.php'
+    > Nicht gefunden
+  - Suche'foo/bar.php'
+    > Gefunden
+    - Inkludiere 'foo/bar.php'
+
+Pfad: abc
+- Suche Verzeichnis 'abc'
+  > Nicht gefunden
+  - Suche Datei 'abc.php'
+    > Gefunden
+    - Inkludiere 'abc.php'
+
+Pfad: def/ghi
+- Suche Verzeichnis 'def'
+  > Gefunden
+  - Suche 'def.inc.php'
+    > Gefunden
+    - Inkludiere 'def.inc.php'
+  - Suche Verzeichnis 'def/ghi'
+    > Nicht gefunden
+  - Suche Datei 'def/ghi.php'
+    > Gefunden
+    - Inkludiere 'def/ghi.php'
+
+Pfad: 404
+- Suche Verzeichnis '404'
+  > Nicht gefunden
+- Suche Datei '404.php'
+  > Nicht gefunden
+-> 404-Error

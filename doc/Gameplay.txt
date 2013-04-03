@@ -1,0 +1,27 @@
+Anforderungen an das langfristige Gameplay
+
+Spieler:
+- Einstiegsphase
+	- Spieler lernt das Spiel/Abläufe
+	- Hilfestellungen
+	- Alle benötigten Ressourcen müssen ausreichend vorhanden sein
+	- Möglichst nur selbstbeeinflusstes Spiel
+	- Interaktion mit Spiel durch freie Händler, generell freie Ressourcen...
+
+- Fortlaufende Phase
+	- Herausforderungen für den Spieler
+		- Katastrophen => stabiler Zustand muss wieder erreicht werden
+		- Ressourcenknappheit => neue Ressourcen suchen, erschließen
+			- Einflussbereich kann vergrößert werden
+	- Spiel zwar durch außen beeinflusst, im großen und ganzen durch den Spieler selbstbestimmt
+	- Immer die Möglichkeit zur Expandierung bestehen
+		- Kein fortlaufender "Rückschritt"
+
+- Freie Entfaltungsmöglichkeiten
+	- Alle Möglichkeiten 
+	- Interaktion mit anderen Spielern
+		- Kämpfen
+		- Handeln
+	- Quests
+	- Achievements
+	- => Spiel hat kein Ende, eine Verbesserung ist immer möglich

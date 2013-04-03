@@ -1,0 +1,12 @@
+﻿<cbg_object>
+	<name>Beton</name>
+	<image>concrete</image>
+	<description>Ein Baustoff für größere Strukturen und große Landbefestigungen.</description>
+	<value>4</value>
+	<condition>
+		<type>building</type>
+		<identifier>hut</identifier>
+		<amount>1</amount>
+		<global>0</global>
+	</condition>
+</cbg_object>

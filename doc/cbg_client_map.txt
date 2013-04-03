@@ -1,0 +1,15 @@
+Format:
+
+3 Dimensionales Array mit
+
+Index 1: Y - Chunk
+Index 2: X - Chunk
+Index 3: Flaches Array von Tiles in einem Chunk, Länge ist chunkSize * chunkSize
+
+[
+    {"x": 0, "y:" 0}, {"x": 1, "y": 0}, ... }
+]
+
+[
+    {"x": 0, "y": 0, "data": [[0, 0], [0, 0], ...]}
+]

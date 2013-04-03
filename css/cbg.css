@@ -1,0 +1,139 @@
+/* Global */
+
+root, body {
+    background: #555 url(bg.png);
+    font-family: 'Trebuchet MS',Arial,sans-serif;
+    font-size: 0.8em;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+    line-height: 1.4em;
+}
+
+::selection {
+    background-color:#CCC
+}
+
+::-moz-selection {
+    background-color:#CCC
+}
+
+::-webkit-selection {
+    background-color:#CCC
+}
+
+
+/* General element styling */
+
+a {
+    color:#000;
+    text-decoration:none;
+}
+
+label {
+    margin: 0 auto;
+}
+
+/* Layout */
+
+.box {
+    color:#000;
+    background-color:#fff;
+    box-shadow:0 0 40px rgba(0,0,0,0.4)
+}
+
+/* Tables */
+
+table,tbody,tr,td {
+    border-spacing:0 2px;
+    margin-left:0;
+    padding-left:0
+}
+
+td p {
+    margin-top: 4px;
+}
+
+th {
+    text-align: left;
+    font-weight: normal;
+}
+
+/* Inputs */
+
+form {
+    margin-top:10px;
+}
+
+input,textarea,select {
+    font-family: Arial,sans-serif;
+    font-size: 1em;
+    margin: 2px 2px 2px 0;
+    outline: none;
+    padding: 1px 1px 1px 2px;
+}
+
+input[type=submit],input[type=button],input[type=reset] {
+    height: 24px;
+    padding: 1px 10px;
+}
+
+input[type=text],input[type=password],input[type=email],input[type=number],input[type=checkbox],select,textarea {
+    border-color: #999;
+    border-style: solid;
+    border-width: 1px;
+    background-color: #fff;
+}
+
+input[type=text]:focus,input[type=password]:focus,input[type=email]:focus,input[type=number]:focus,input[type=checkbox]:focus,select:focus,textarea:focus {
+    border-color: #000;
+}
+
+input[type=text],input[type=email],input[type=password],input[type=number] {
+    width: 150px;
+}
+
+input[type=checkbox] {
+    margin-right: 4px;
+}
+
+/* Links */
+
+a.back:before {
+    content:'« ';
+}
+
+a.back:after {
+    content:'';
+}
+
+footer a:after {
+    content:'';
+}
+
+a:after > img {
+    content:'';
+}
+
+a img {
+    border:none
+}
+
+a.important,a:hover,h1 a:hover,h2 a:hover,h3 a:hover,h4 a:hover {
+    text-decoration:underline
+}
+
+footer, footer *, footer a:hover {
+    color:#777;
+    text-decoration:none
+}
+
+/* General Stylingelements */
+
+.error, .highlight {
+    color:#D00
+}
+
+.success {
+    color:#070
+}

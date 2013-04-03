@@ -1,0 +1,1629 @@
+<?php
+
+class cbg_output {
+
+    public function display() {
+        $path = $this->getPath();
+        $context = ROOT;
+
+        header('X-UA-Compatible: chrome=1;'); //Google Chrome Frame
+        //ob_start("ob_gzhandler"); //gzip
+
+        $malicious = false;
+        $badword = array('delete from', 'select *', 'drop table', 'drop database');
+        foreach($_REQUEST as $req) {
+            foreach($badword as $word) {
+                if(stripos($req, $word) !== false) {
+                    $malicious = true;
+                    break;
+                }
+            }
+        }
+
+        if(MAINTENANCE != '' && !$this->cbg->isSuperSession()) {
+            $this->smarty->assign('site_title', $this->cbg->getProjectName() . ' ' . $this->seperator . ' Wartung');
+            $message = (MAINTENANCE !== true) ? '<p>' . MAINTENANCE . '</p>' : '';
+            $this->smarty->assign('fatal_error', '<h3>Temporäre Wartung</h3>' . $message . '<p>Bitte versuche es später erneut.</p>');
+            $output = $this->smarty->fetch('cbg_login.tpl');
+        } else if((!isset($_COOKIE['cbg_override_ua']) || $_COOKIE['cbg_override_ua'] != true) && isset($_SERVER['HTTP_USER_AGENT']) && false) {
+            $this->smarty->assign('site_title', $this->cbg->getProjectName() . ' ' . $this->seperator . ' Fehler');
+            $this->smarty->assign('fatal_error', '<h3>Fehler</h3><p>Es tut uns Leid, du verwendest einen veralteten Browser.</p><p>Möglicherweise wird die Seite fehlerhaft dargestellt und es können Probleme auftreten.</p><p>Um die Seite dennoch zu besuchen, öffne <a href="' . ROOT . 'login/override/" class="important">diesen Link</a>.</p>');
+            $output = $this->smarty->fetch('cbg_login.tpl');
+        } else if(isset($_SERVER['HTTP_REFERER']) && !empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], ROOT) !== 0 && count($path) > 1) {
+            $this->displayError('referer');
+            return true;
+        } else if($malicious) {
+            $this->cbg->logAttack();
+            $this->displayError('malicious');
+            return true;
+        } else {
+            $link = isset($path[0]) ? $path[0] : 'login';
+            $linkpath = array();
+
+                case 'game':
+                    $context .= 'game/';
+                    $contextupper = $context;
+                    if($this->cbg->authSession()) {
+                        $user = $this->cbg->getCurrentUser();
+                        $settlements = array();
+                        $newsettlement = 0;
+                        if(isset($_POST['game_settlement_select'])) {
+                            $this->cbg->setCurrentSettlement($_POST['game_settlement_select']);
+                        }
+                        foreach($user->getSettlements() as $settlement) {
+                            $array = array();
+                            $array['id'] = $settlement->getId();
+                            $array['name'] = $settlement->getName();
+                            if($this->cbg->getCurrentSettlement())
+                                $array['current'] = $this->cbg->getCurrentSettlement()->getId() == $settlement->getId() ? true : false;
+                            $settlements[] = $array;
+                        }
+                        $this->smarty->assign('settlements', $settlements);
+                        $user_settlement = $this->cbg->getCurrentSettlement();
+                        $this->smarty->assign('user', array('name' => $this->getUserDetailed($user), 'admin' => $user->can('admin_view'), 'settlements' => $settlements));
+                        $link = isset($path[1]) ? $path[1] : 'dashboard';
+                        $content = '';
+                        $nocontent = false;
+                        if($user->can('admin_view')) {
+                            $linkpath[] = array('title' => 'Administration', 'link' => $context);
+                        } else {
+                            $linkpath[] = array('title' => 'Übersicht', 'link' => $context);
+                        }
+                        switch($link) {
+                            case 'dashboard':
+                                $context .= 'dashboard/';
+                                $overwrite = false;
+                                if($user->can('admin_view')) {
+                                    $admin = cbg_output::createBlock($contextupper . 'users/', 'Benutzer und Gruppen', 'Neue Benutzer und Gruppen anlegen und verwalten.', !$user->can('user_add') && !$user->can('user_edit') && !$user->can('user_moderate'));
+                                    $admin .= cbg_output::createBlock($contextupper . 'messages/', 'Nachrichten und Support', 'Private Nachrichten und Supportanfragen verwalten.', false);
+                                    if($user->can('project_settings'))
+                                        $admin .= cbg_output::createBlock($contextupper . 'settings/', 'Projekteinstellungen', 'Projekteinstellungen anzeigen und verändern.', !$user->can('project_settings'));
+                                    $this->smarty->assign('gui_dashboard_administration', $admin);
+                                } else {
+                                    if(false) {
+                                        $overwrite = true;
+                                        $linkpath[] = array('title' => 'Errungenschaft erhalten', 'link' => $context);
+                                        $content .= '<p>Goldschaufel gefunden!</p>';
+                                    }
+                                }
+                                if(!$overwrite) {
+                                    $dashboard_messages = array();
+                                    foreach($user->getMessages(true) as $message) {
+                                        $from = $message->getFrom();
+                                        $by = $from ? $this->getUserDetailed($from) : 'System';
+                                        $dashboard_messages[] = array('id' => $message->getId(), 'global' => $message->isGlobal(), 'by' => $by, 'time' => date(cbg_output::getFormat('datetime'), $message->getTime()), 'summary' => trim(cbg_output::cleanOutput($message->getMessage(), 15)), 'read' => $message->isRead());
+                                    }
+                                    $this->smarty->assign('gui_dashboard_messages', $dashboard_messages);
+                                    $this->smarty->assign('gui_dashboard_history', $this->getFullHistory($user, 4));
+                                    $extra = '';
+                                    $time = $user->getLastLogin();
+                                    $extra .= '<p>Deine letzte Anmeldung war am ' . date($this->getFormat('date'), $time) . ' um ' . date($this->getFormat('time'), $time) . ' Uhr.</p>';
+                                    //$plural = $this->getCount('day', $this->cbg->getServertime()-$user->getRegistrationDate()) != 1 ? 'en' : '';
+                                    //$extra .= '<p>Du bist seit '.($this->getCount('day', $this->cbg->getServertime()-$user->getRegistrationDate())).' Tag'.$plural.' Mitglied.</p>';
+                                    $extra .= cbg_output::createBlock($contextupper . 'users/settings/', 'Einstellungen', 'Deine Einstellungen anzeigen und verändern.', false);
+                                    $this->smarty->assign('gui_dashboard_extra', $extra);
+                                    if($user->groupOverrideActive() && $user->can('admin_view', true))
+                                        $this->smarty->assign('gui_dashboard_no_settlement', true);
+                                    $content .= $this->smarty->fetch('interface/gui_dashboard.tpl');
+                                }
+                                break;
+                            case 'messages':
+                                $context .= 'messages/';
+                                $linkpath[] = array('title' => 'Nachrichten &amp; Support', 'link' => $context);
+                                $link = isset($path[2]) ? $path[2] : 'show';
+                                $req_message = isset($path[3]) && is_numeric($path[3]) ? $path[3] : 0;
+                                switch($link) {
+                                    case 'show':
+                                        $maintenances = $this->cbg->getNextMaintenance();
+                                        if($maintenances) {
+                                            $content .= '<h2>Ankündigungen</h2>';
+                                            $current = $this->cbg->getActiveMaintenance();
+                                            $id = $current ? $current['id'] : 0;
+                                            foreach($maintenances as $row) {
+                                                $active = $id == $row['id'] ? ' &raquo; <span class="error">Aktiv</span>' : '';
+                                                $content .= '<p class="mblock"><strong>Geplante Wartung am ' . date($this->getFormat('date'), $row['from']) . $active . '</strong><br>' . $row['reason'] . ' - Vorraussichtliche Uhrzeit: ' . date($this->getFormat('time'), $row['from']) . '-' . date($this->getFormat('time'), $row['until']);
+                                            }
+                                        }
+                                        $content .= '<h2>Private Nachrichten</h2>';
+                                        if(isset($path[3]) && $path[3] == 'removed') {
+                                            $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Nachricht entfernt.</strong></p>';
+                                        }
+                                        if(isset($path[3]) && $path[3] == 'sent') {
+                                            $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Nachricht gesendet.</strong></p>';
+                                        }
+                                        $content .= '<ol class="messages">';
+                                        $count = 0;
+                                        foreach($user->getMessages(true) as $message) {
+                                            $from = $message->getFrom() ? $this->getUserDetailed($message->getFrom()) : 'System';
+                                            if($req_message == $message->getId()) {
+                                                $content .= '<li class="bghighlight">';
+                                            } else {
+                                                $content .= '<li>';
+                                            }
+                                            $extra = '';
+                                            $extra .=!$message->isGlobal() || $user->can('user_message_global') ? cbg_output::createIconLink('cross', $context . 'remove/' . $message->getId() . '/', 'Entfernen') : '';
+                                            $extra .= $message->isGlobal() ? 'Globale Nachricht' : '';
+                                            $content .= '<p class="mblock"><strong><a name="m' . $message->getId() . '"></a>' . date(cbg_output::getFormat('datetime'), $message->getTime()) . ' &raquo; ' . $from . ' &raquo; ' . $extra . '</strong><br>' . $this->parseOutput($message->getMessage()) . '</p>';
+                                            if(!$message->isGlobal() && !$message->isRead())
+                                                $message->read();
+                                            $count++;
+                                        }
+                                        if(!$count) {
+                                            $content .= '<li class="disabled">Keine Nachrichten vorhanden. Empfangene Nachrichten von anderen Benutzern werden hier angezeigt.</li>';
+                                        }
+                                        $content .= '</ol>';
+                                        $content .= '<a href="' . $context . 'new/">Nachricht verfassen</a> &raquo;';
+                                        if($user->can('user_support')) {
+                                            $content .= '<h2>Support-Anfragen</h2>';
+                                            $content .= '<ol>';
+                                            $count = 0;
+                                            /* foreach ($cbg->getSupportTickets($user) as $message) {
+                                             *
+                                              $count++;
+                                              } */
+                                            if(!$count) {
+                                                $content .= '<li class="disabled">Es liegen keine Tickets in deinem Zuständigkeitsbereich vor.</li>';
+                                            }
+                                            $content .= '</ol>';
+                                        } else {
+                                            $content .= '<h2>Spiel-Support</h2>';
+                                            $content .= '<ol>';
+                                            $count = 0;
+                                            foreach($user->getSupport(true) as $ticket) {
+                                                $count++;
+                                            }
+                                            if(!$count) {
+                                                $content .= '<li class="disabled">Du hast keine aktiven Support-Tickets gestellt. Eigene Tickets werden hier angezeigt.</li>';
+                                            }
+                                            $content .= '</ol>';
+                                            $content .= '<p><a href="' . $context . 'support/new/">Support-Anfrage verfassen</a> &raquo;</p>';
+                                        }
+                                        break;
+                                    case 'support':
+                                        $contextupper = $context;
+                                        $context .= 'support/';
+                                        $linkpath[] = array('title' => 'Support', 'link' => $context);
+                                        $link = isset($path[3]) ? $path[3] : 'new';
+                                        switch($link) {
+                                            case 'new':
+                                                if(!$user->can('user_support')) {
+                                                    $content .= '<h2>Neue Support-Anfrage verfassen</h2>';
+                                                    if(isset($_POST['support_category']) && isset($_POST['support_body'])) {
+                                                        $errors = array();
+                                                        if(empty($errors)) {
+                                                            
+                                                        }
+                                                    }
+                                                    $content .= $this->smarty->fetch('interface/form_support.tpl');
+                                                } else {
+                                                    $this->displayError('403');
+                                                    return true;
+                                                }
+                                                break;
+                                            default:
+                                                $this->displayError('404');
+                                                return true;
+                                                break;
+                                        }
+                                        break;
+                                    case 'new':
+                                        $contextupper = $context;
+                                        $context .= 'new/';
+                                        $linkpath[] = array('title' => 'Verfassen', 'link' => $context);
+                                        $content .= '<h2>Nachricht verfassen</h2>';
+                                        $to = isset($_POST['message_to']) ? cbg_output::cleanOutput($_POST['message_to']) : '';
+                                        if($user->can('user_message_global')) {
+                                            $this->smarty->assign('message_global', true);
+                                            if(isset($_POST['message_global']) && $_POST['message_global']) {
+                                                $this->smarty->assign('message_global_checked', true);
+                                                $global = true;
+                                            }
+                                        }
+                                        $user_id = isset($path[3]) ? $path[3] : false;
+                                        try {
+                                            if((isset($_POST['message_to']) || $user_id || $global) && isset($_POST['message_body'])) {
+                                                $errors = array();
+                                                try {
+                                                    if($user_id || $global) {
+                                                        if(!$global) {
+                                                            $user_to = $this->cbg->getUserById($user_id, false);
+                                                        }
+                                                        $this->smarty->assign('message_to_disabled', true);
+                                                    } else {
+                                                        $user_to = $this->cbg->getUserByName($_POST['message_to'], false);
+                                                        $user_id = $user_to->getId();
+                                                    }
+                                                    if(!$global)
+                                                        $this->smarty->assign('message_to', $user_to->getUsername());
+                                                } catch(OutOfBoundsException $ex) {
+                                                    $errors[] = 'Benutzer nicht vorhanden';
+                                                }
+                                                if(strlen($_POST['message_body']) < $this->cbg->getConfig('user_message_length_min', 10)) {
+                                                    $errors[] = 'Nachricht zu kurz (mindestens ' . $this->cbg->getConfig('user_message_length_min', 10) . ' Zeichen)';
+                                                }
+                                                if(strlen($_POST['message_body']) > $this->cbg->getConfig('user_message_length_max', 600)) {
+                                                    $errors[] = 'Nachricht zu lang (maximal ' . $this->cbg->getConfig('user_message_length_max', 600) . ' Zeichen)';
+                                                }
+                                                if(!$this->cbg->validString($_POST['message_body'])) {
+                                                    $errors[] = 'Nachricht enthält geblockte Wörter';
+                                                }
+                                                if(empty($errors)) {
+                                                    try {
+                                                        if(!$user_id && !$user->can('user_message_global')) {
+                                                            throw new Exception('cbg_right violation in user_message_global');
+                                                        }
+                                                        $user->sendMessage($user_id, $_POST['message_body']);
+                                                        header('Location: ' . $contextupper . 'show/sent/');
+                                                        return true;
+                                                    } catch(Exception $ex) {
+                                                        $content .= '<p><strong class="error">' . $this->getIcon('cross') . 'Nachricht konnte nicht gesendet werden. Bitte versuche es später erneut.</strong></p>';
+                                                        $this->smarty->assign('message_body', cbg_output::cleanOutput($_POST['message_body']));
+                                                        $content .= $this->smarty->fetch('interface/form_message.tpl');
+                                                    }
+                                                } else {
+                                                    $content .= '<p><strong class="error">' . $this->getIcon('cross') . $errors[0] . '.</strong></p>';
+                                                    $this->smarty->assign('message_body', cbg_output::cleanOutput($_POST['message_body']));
+                                                    $content .= $this->smarty->fetch('interface/form_message.tpl');
+                                                }
+                                            } else {
+                                                if($user->groupOverrideActive()) {
+                                                    $content .= '<p class="pending">Du sendest diese Nachricht als ' . $user->getGroup(false, true)->getName() . '.</p>';
+                                                }
+                                                $content .= $this->smarty->fetch('interface/form_message.tpl');
+                                            }
+                                        } catch(OutOfBoundsException $ex) {
+                                            $this->displayError('404');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'remove':
+                                        $contextupper = $context;
+                                        $context .= 'remove/';
+                                        $linkpath[] = array('title' => 'Entfernen', 'link' => $context);
+                                        $link = isset($path[3]) ? $path[3] : '';
+                                        if($link) {
+                                            try {
+                                                $message = new cbg_user_message($this->cbg);
+                                                $message->loadById($link);
+                                                $context .= $link . '/';
+                                                $linkpath[] = array('title' => 'Nachricht #' . $message->getId(), 'link' => $context);
+                                                if((!$message->isGlobal() || $user->can('user_message_global')) && ($message->isGlobal() || $message->getTo()->getId() == $user->getId())) {
+                                                    if(isset($_POST['message_remove'])) {
+                                                        $message->remove();
+                                                        header('Location: ' . $contextupper . 'show/removed/');
+                                                        return true;
+                                                    } else {
+                                                        $content .= '<h2>Nachricht entfernen</h2>';
+                                                        $content .= '<form action="." method="post">';
+                                                        $content .= '<p>Soll diese Nachricht endgültig gelöscht werden?</p>';
+                                                        $content .= '<input type="submit" name="message_remove" value="Entfernen">';
+                                                        $content .= '</form>';
+                                                    }
+                                                } else {
+                                                    $this->displayError('403');
+                                                    return true;
+                                                }
+                                            } catch(OutOfBoundsException $ex) {
+                                                $this->displayError('404');
+                                                return true;
+                                            }
+                                        } else {
+                                            header('Location: ' . $contextupper);
+                                        }
+                                        break;
+                                    default:
+                                        $this->displayError('404');
+                                        return true;
+                                        break;
+                                }
+                                break;
+                            case 'users':
+                                $context .= 'users/';
+                                $contextupper = $context;
+                                if($user->can('admin_view')) {
+                                    $linkpath[] = array('title' => 'Benutzer &amp; Gruppen', 'link' => $context);
+                                } else {
+                                    $linkpath[] = array('title' => 'Spieler &amp; Statistiken', 'link' => $context);
+                                }
+                                $link = isset($path[2]) ? $path[2] : 'choose';
+                                switch($link) {
+                                    case 'choose':
+                                        $context .= 'choose/';
+                                        if($user->can('admin_view')) {
+                                            $ok = false;
+                                            if($user->can('user_view') || $user->can('user_add') || $user->can('user_moderate') || $this->cbg->getOpenRegistration() || $this->cbg->getMaximumInvites() != 0 || $user->getInvites() > 0 || count($user->getKeys()) != 0) {
+                                                $ok = true;
+                                                $content .= '<h2>Benutzer und Einladungen</h2>';
+                                                if($user->can('user_view'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'search/', 'Benutzer anzeigen', 'Alle Benutzer anzeigen und nach einem bestimmten Benutzer suchen.');
+                                                if($user->can('user_add'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'add/', 'Benutzer erstellen', 'Einen neuen Benutzer erstellen und ihm einer Gruppe zuweisen.');
+                                                if($user->can('user_moderate'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'moderate/', 'Benutzer moderieren', 'Beschwerden zu Benutzern und statistische Vorschläge zu Verwarnungen und Bans anzeigen.');
+                                                $content .= cbg_output::createBlock($contextupper . 'invite/', 'Benutzer einladen', 'Einen neuen Benutzer einladen.', !$this->cbg->getOpenRegistration() && !$user->can('user_add') && $user->getInvites() >= 0 && $this->cbg->getMaximumInvites() == 0 && count($user->getKeys()) == 0);
+                                            }
+                                            if($user->can('group_view') || $user->can('group_add') || $user->can('user_edit_all')) {
+                                                $ok = true;
+                                                $content .= '<h2>Gruppen und Berechtigungen</h2>';
+                                                if($user->can('group_view'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'groups/', 'Gruppen anzeigen', 'Vorhandene Gruppen anzeigen.');
+                                                if($user->can('group_add'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'add/', 'Gruppe erstellen', 'Eine neue Gruppe erstellen und ihr Rechte zuweisen.');
+                                                if($user->can('user_edit_all'))
+                                                    $content .= cbg_output::createBlock($contextupper . 'override/', 'Berechtigungen testen', 'Die Berechtigungen einer bestimmten Gruppe testen.');
+                                            }
+                                            if(!$ok) {
+                                                $this->displayError('403');
+                                                return true;
+                                            }
+                                        } else {
+                                            $content .= '<h2>Spieler suchen</h2>';
+                                            $content .= '<input type="search" results="0"><input type="submit" value="Suchen">';
+                                            $content .= '<h2>Spieler einladen</h2>';
+                                            if($this->cbg->getOpenRegistration() || $this->cbg->getMaximumInvites() != 0 || $user->getInvites() > 0 || count($user->getKeys()) != 0) {
+                                                if(!$this->cbg->getOpenRegistration()) {
+                                                    $content .= '<a href="' . $contextupper . 'invite/">Meine Einladungen</a> &raquo;';
+                                                } else {
+                                                    $content .= '<a href="' . $contextupper . 'invite/">Einen Freund einladen</a> &raquo;';
+                                                }
+                                            } else {
+                                                $content .= '<span class="disabled">Einladung nicht möglich.</span>';
+                                            }
+                                        }
+                                        break;
+                                    case 'settings':
+                                        $context .= 'settings/';
+                                        $linkpath[] = array('title' => 'Einstellungen', 'link' => $context);
+                                        if(!$user->can('user_edit_all')) {
+                                            $content .= '<h2>Einstellungen</h2>';
+                                            if(isset($_POST['form_user_edit_submit'])) {
+                                                $errors = array();
+                                                if(isset($_POST['new_password']) && isset($_POST['new_password_confirm']) && (!empty($_POST['new_password']) || !empty($_POST['new_password_confirm']))) {
+                                                    if($_POST['new_password'] !== $_POST['new_password_confirm']) {
+                                                        $errors[] = 'Passwörter stimmen nicht überein';
+                                                    } else {
+                                                        $password = $_POST['new_password'];
+                                                        try {
+                                                            $user->setPassword($password);
+                                                        } catch(Exception $ex) {
+                                                            $errors[] = $ex->getMessage();
+                                                        }
+                                                    }
+                                                }
+                                                try {
+                                                    if(isset($_POST['mail'])) {
+                                                        $user->setEmail($_POST['mail']);
+                                                    }
+                                                } catch(UnexpectedValueException $ex) {
+                                                    $errors[] = $ex->getMessage();
+                                                }
+                                                if(isset($errors[0])) {
+                                                    $content .= '<strong class="error">' . $this->getIcon('cross') . $errors[0] . '.</strong>';
+                                                } else {
+                                                    $user->save();
+                                                    $content .= '<strong class="success">' . $this->getIcon('hook') . 'Änderungen gespeichert.' . '</strong>';
+                                                }
+                                            }
+                                            $this->smarty->assign('form_user_edit_mail', $user->getEmail());
+                                            $this->smarty->assign('form_user_edit_show_mail', true);
+                                            $content .= $this->smarty->fetch('interface/form_user_edit.tpl');
+                                        } else {
+                                            header('Location: ' . $contextupper . 'show/' . $user->getId() . '/edit/');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'add':
+                                        $context .= 'add/';
+                                        $linkpath[] = array('title' => 'Benutzer erstellen', 'link' => $context);
+                                        if($user->can('user_add')) {
+                                            $content .= '<h2>Neuen Benutzer erstellen</h2>';
+                                            //@todo Benutzer erstellen
+                                            $content .= 'To be implemented';
+                                        } else {
+                                            $this->displayError('403');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'show':
+                                        $context .= 'show/';
+                                        if($user->can('admin_view')) {
+                                            $linkpath[] = array('title' => 'Benutzer', 'link' => $context);
+                                        } else {
+                                            $linkpath[] = array('title' => 'Spieler', 'link' => $context);
+                                        }
+                                        try {
+                                            $user_id = isset($path[3]) ? $path[3] : '0';
+                                            if(is_numeric($user_id)) {
+                                                $cur_user = $this->cbg->getUserById($user_id, false);
+                                                $link = isset($path[4]) ? $path[4] : 'view';
+                                                $context .= $cur_user->getId() . '/';
+                                                $linkpath[] = array('title' => $cur_user->getUsername(), 'link' => $context);
+                                                switch($link) {
+                                                    case 'view':
+                                                        if(!$user->can('admin_view') || ($user->can('user_edit') || $user->can('user_moderate') || $user->can('user_view'))) {
+                                                            $same = false;
+                                                            if($cur_user->getId() == $user->getId())
+                                                                $same = true;
+                                                            $ban = $cur_user->getBan();
+                                                            $content .= '<h2>Benutzerinformationen anzeigen</h2>';
+                                                            if($same)
+                                                                $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Das bist du.</strong></p>';
+                                                            if($ban)
+                                                                $content .= '<p><strong class="error">' . $this->getIcon('cross') . 'Dieser Benutzer ist gebannt.</strong></p>';
+                                                            $content .= '<table>';
+                                                            $content .= '<tr><th>Benutzer:</th>' . '<td><a href=".">' . $this->getUserDetailed($cur_user, true) . '</a></td></tr>';
+                                                            if($user->can('user_mail_access'))
+                                                                $content .= '<tr><th>E-Mail:</th>' . '<td><a href="mailto:' . $cur_user->getEmail() . '">' . $cur_user->getEmail() . '</a></td></tr>';
+                                                            if(!$cur_user->can('admin_view'))
+                                                                $content .= '<tr><th>Punkte:</th>' . '<td>' . $cur_user->getPoints() . ' (Platz #' . $cur_user->getRank() . ')</td></tr>';
+                                                            $group = $cur_user->getGroup();
+                                                            if($group) {
+                                                                if($user->can('user_edit_all')) {
+                                                                    $group_str = '<a href="' . $contextupper . 'groups/show/' . $group->getId() . '/">' . $group->getName() . '</a>';
+                                                                } else {
+                                                                    $group_str = $group->getName();
+                                                                }
+                                                            }
+                                                            $content .= '<tr><th>Gruppe:</th><td>' . $group_str . '</td></tr>';
+                                                            if($cur_user->getRegistrationDate() != 0) {
+                                                                $invite = $cur_user->getInvitedBy() ? ' (Eingeladen von ' . $this->getUserDetailed($cur_user->getInvitedBy()) . ')' : '';
+                                                                $content .= '<tr><th>Registrierung:</th>' . '<td>' . date($this->getFormat('date'), $cur_user->getRegistrationDate()) . $invite . '</td></tr>';
+                                                            }
+                                                            $badges = array();
+                                                            if($cur_user->getRegistrationDate() < mktime(12, 0, 0, 1, 1, 2011))
+                                                                $badges[] = $this->getIcon('badge_gold', 'Pre-Alpha-Teilnehmer') . 'Pre-Alpha-Teilnehmer';
+                                                            //if($cur_user->getRegistrationDate() < mktime(12, 0, 0, 1, 1, 2011)) $badges[] =  $this->getIcon('badge_silver', 'Alpha-Teilnehmer').'Alpha-Teilnehmer';
+                                                            //if($cur_user->getRegistrationDate() < mktime(12, 0, 0, 1, 1, 2011)) $badges[] =  $this->getIcon('badge_bronze', 'Beta-Teilnehmer').'Beta-Teilnehmer';
+                                                            if(count($badges)) {
+                                                                $content .= '<tr><th>Abzeichen:</th>' . '<td>';
+                                                                $i = 0;
+                                                                foreach($badges as $badge) {
+                                                                    if($i)
+                                                                        $content .= '<br>';
+                                                                    $content .= $badge;
+                                                                    $i++;
+                                                                }
+                                                                $content .= '</td></tr>';
+                                                            }
+                                                            if($ban) {
+                                                                if($ban->getUntil()) {
+                                                                    $until = date(cbg_output::getFormat('date'), $ban->getUntil());
+                                                                } else {
+                                                                    $until = '';
+                                                                }
+                                                                $by = $ban->getBy() ? ' von ' . $this->getUserDetailed($ban->getBy()) : '';
+                                                                $reason = cbg_output::parseOutput($ban->getComment(), true);
+                                                                $reason = $reason ? ' (' . $reason . ')' : '';
+                                                                if($until || $reason) {
+                                                                    $link = $user->can('user_ban') ? '<a href="' . $context . 'ban/" class="error">Bis zum ' . $until . $reason . '</a>' . $by : '<span class="error">' . $until . $reason . '</span>' . $by;
+                                                                } else {
+                                                                    $link = $user->can('user_ban') ? '<a href="' . $context . 'ban/" class="error">Auf unbestimmte Zeit</a>' . $by : '<span class="error">Auf unbestimmte Zeit</span>' . $by;
+                                                                }
+                                                                $content .= '<tr><th>Gebannt:</th><td>' . $link . '</td></tr>';
+                                                            } else if($user->can('admin_view')) {
+                                                                if($user->can('user_moderate')) {
+                                                                    $scores = $this->cbg->getAntiCheat(1, $cur_user);
+                                                                    if($scores) {
+                                                                        $score = $scores[0];
+                                                                        if($score['count'] > 7) {
+                                                                            $content .= '<tr><th>Betrugsversuch:</th><td><a href="' . $contextupper . 'moderate/anticheat/' . $cur_user->getId() . '/" class="error">Doppelaccount, ' . $score['score'] . ' (aus 10)</a></td></tr>';
+                                                                        }
+                                                                    }
+                                                                }
+                                                                if($cur_user->isOnline()) {
+                                                                    $online = '<span class="success"><strong>Online</strong></span>';
+                                                                } else {
+                                                                    $dif = $this->cbg->getServertime() - $cur_user->lastOnline();
+                                                                    if($dif > 12 * 31 * 24 * 60 * 60) {
+                                                                        $days = 'vor einer Ewigkeit';
+                                                                    } else if($dif > 31 * 24 * 60 * 60) {
+                                                                        $monthcount = intval($dif / (31 * 24 * 60 * 60));
+                                                                        if($monthcount > 1) {
+                                                                            $days = 'vor ' . $monthcount . ' Monaten';
+                                                                        } else if($monthcount > 0) {
+                                                                            $days = 'vor ' . $monthcount . ' Monat';
+                                                                        } else if($monthcount == 0) {
+                                                                            $days = 'diesen Monat';
+                                                                        }
+                                                                    } else if($dif > 7 * 24 * 60 * 60) {
+                                                                        $weekcount = intval($dif / (7 * 24 * 60 * 60));
+                                                                        if($weekcount > 1) {
+                                                                            $days = 'vor ' . $weekcount . ' Wochen';
+                                                                        } else if($weekcount > 0) {
+                                                                            $days = 'vor ' . $weekcount . ' Woche';
+                                                                        } else if($weekcount == 0) {
+                                                                            $days = 'diese Woche';
+                                                                        }
+                                                                    } else {
+                                                                        $daycount = intval($dif / (24 * 60 * 60));
+                                                                        $days = '';
+                                                                        if($daycount > 1) {
+                                                                            $days = 'vor ' . $daycount . ' Tagen';
+                                                                        } else if($daycount > 0) {
+                                                                            $days = 'vor ' . $daycount . ' Tag';
+                                                                        } else if($daycount == 0) {
+                                                                            $days = 'Heute';
+                                                                        }
+                                                                    }
+                                                                    $class = 'pending';
+                                                                    if($dif < 24 * 60 * 60)
+                                                                        $class = 'success';
+                                                                    $online = '<span class="' . $class . '">Zuletzt online am ' . date(cbg_output::getFormat('date'), $cur_user->lastOnline()) . ' (' . $days . ')</span>';
+                                                                }
+                                                                if(!$same)
+                                                                    $content .= '<tr><th>Aktivität:</th><td>' . $online . '</td></tr>';
+                                                            }
+                                                            if(!$same) {
+                                                                $content .= '<tr><td>&nbsp;</td>' . '<td><a href="' . ROOT . 'game/messages/new/' . $cur_user->getId() . '/">Nachricht senden</a> &raquo;</td></tr>';
+                                                            } else {
+                                                                $content .= '<tr><td>&nbsp;</td>' . '<td><a href="' . ROOT . 'game/users/settings/">Einstellungen</a> &raquo;</td></tr>';
+                                                            }
+                                                            $content .= '</table>';
+                                                            if($user->can('admin_view')) {
+                                                                $content .= cbg_output::createBlock($context . 'edit/', 'Benutzer bearbeiten', 'Benutzerdaten bearbeiten und Details anzeigen.', ((!$user->can('user_edit_all') && $cur_user->can('admin_view')) || !$user->can('user_edit')) && $user->getId() != $cur_user->getId());
+                                                                if($cur_user->getBan()) {
+                                                                    $content .= cbg_output::createBlock($context . 'ban/', 'Benutzer entbannen', 'Den Benutzer vor Ablauf der Dauer entbannen.', $user->getId() == $cur_user->getId() || $user->getGroupId() == $cur_user->getGroupId() || (!$user->can('user_edit_all') && $cur_user->can('admin_view')));
+                                                                } else {
+                                                                    $content .= cbg_output::createBlock($context . 'ban/', 'Benutzer bannen', 'Diesen Benutzer für eine bestimmte Zeit aus dem System verweisen.', $user->getId() == $cur_user->getId() || $user->getGroupId() == $cur_user->getGroupId() || (!$user->can('user_edit_all') && $cur_user->can('admin_view')));
+                                                                }
+                                                                if($user->can('user_edit_all'))
+                                                                    $content .= cbg_output::createBlock($contextupper . 'override/set/' . $cur_user->getGroup()->getId() . '/', 'Berechtigungen testen', 'Die Rechte dieses Benutzers testen.', $same || $user->getGroup()->getId() == $cur_user->getGroup()->getId());
+                                                            }
+                                                        } else {
+                                                            $this->displayError('403');
+                                                        }
+                                                        break;
+                                                    case 'edit':
+                                                        if($user->can('admin_view')) {
+                                                            if($user->getId() == $cur_user->getId() && !$user->can('user_edit_all')) {
+                                                                header('Location: ' . $contextupper . 'settings/');
+                                                                return true;
+                                                            } else if($user->can('user_edit') && (!$cur_user->can('admin_view') || $user->can('user_edit_all'))) {
+                                                                $context .= 'edit/';
+                                                                $linkpath[] = array('title' => 'Bearbeiten', 'link' => $context);
+                                                                $content .= '<h2>Benutzer bearbeiten</h2>';
+                                                                if(isset($_POST['form_user_edit_submit'])) {
+                                                                    if($user->can('user_remove') && isset($_POST['remove_user']) && $_POST['remove_user']) {
+                                                                        
+                                                                    } else {
+                                                                        $password = '';
+                                                                        $errors = array();
+                                                                        try {
+                                                                            if(isset($_POST['mail'])) {
+                                                                                $cur_user->setEmail($_POST['mail']);
+                                                                            }
+                                                                        } catch(UnexpectedValueException $ex) {
+                                                                            $errors[] = $ex->getMessage();
+                                                                        }
+                                                                        if(isset($_POST['username']) && $_POST['username'] != $cur_user->getUsername()) {
+                                                                            $username = $_POST['username'];
+                                                                            try {
+                                                                                $cur_user->setUsername($username);
+                                                                            } catch(Exception $ex) {
+                                                                                $errors[] = $ex->getMessage();
+                                                                            }
+                                                                        }
+                                                                        if(isset($_POST['new_password']) && isset($_POST['new_password_confirm']) && (!empty($_POST['new_password']) || !empty($_POST['new_password_confirm']))) {
+                                                                            if($_POST['new_password'] !== $_POST['new_password_confirm']) {
+                                                                                $errors[] = 'Passwörter stimmen nicht überein';
+                                                                            } else {
+                                                                                $password = $_POST['new_password'];
+                                                                                try {
+                                                                                    $cur_user->setPassword($password);
+                                                                                } catch(Exception $ex) {
+                                                                                    $errors[] = $ex->getMessage();
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        if($user->can('user_edit_all')) {
+                                                                            if(isset($_POST['group'])) {
+                                                                                if(is_numeric($_POST['group']) && $this->cbg->getGroupById($_POST['group'])) {
+                                                                                    $cur_user->setGroup($_POST['group']);
+                                                                                } else {
+                                                                                    $errors[] = 'Gruppe nicht gültig';
+                                                                                }
+                                                                            }
+                                                                            if(!$cur_user->can('user_edit_all'))
+                                                                                if(isset($_POST['invites'])) {
+                                                                                    if(is_numeric($_POST['invites']) && $_POST['invites'] >= 0) {
+                                                                                        $cur_user->setInvites($_POST['invites']);
+                                                                                    } else {
+                                                                                        $errors[] = 'Einladungen nicht gültig';
+                                                                                    }
+                                                                                }
+                                                                        }
+                                                                        if(!empty($errors) && isset($errors[0])) {
+                                                                            $content .= '<p><strong class="error">' . $this->getIcon('cross') . $errors[0] . '.</strong></p>';
+                                                                        } else {
+                                                                            $cur_user->save();
+                                                                            $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Änderungen gespeichert. Möglicherweise muss die Seite neu geladen werden.</strong></p>';
+                                                                        }
+                                                                    }
+                                                                }
+                                                                if($user->can('user_edit_all')) {
+                                                                    $this->smarty->assign('form_user_edit_admin', true);
+                                                                    if(!$cur_user->can('user_edit_all'))
+                                                                        $this->smarty->assign('form_user_edit_show_invites', true);
+                                                                    $this->smarty->assign('form_user_edit_invites', $cur_user->getInvites());
+                                                                    if($user->getId() == $cur_user->getId()) {
+                                                                        $this->smarty->assign('form_user_edit_warn_group', true);
+                                                                    }
+                                                                    $groups = array();
+                                                                    foreach($this->cbg->getGroups() as $group) {
+                                                                        $array = array();
+                                                                        $array['id'] = $group->getId();
+                                                                        $array['name'] = $group->getName();
+                                                                        $array['selected'] = $group->getId() == $cur_user->getGroup()->getId() ? true : false;
+                                                                        $groups[] = $array;
+                                                                    }
+                                                                    $this->smarty->assign('form_user_edit_groups', $groups);
+                                                                    $this->smarty->assign('form_user_edit_name', $cur_user->getUsername());
+                                                                }
+                                                                if($user->can('user_mail_access') || $cur_user->getId() == $user->getId()) {
+                                                                    $this->smarty->assign('form_user_edit_show_mail', true);
+                                                                    $this->smarty->assign('form_user_edit_mail', $cur_user->getEmail());
+                                                                }
+                                                                $content .= $this->smarty->fetch('interface/form_user_edit.tpl');
+                                                            } else {
+                                                                $this->displayError('403');
+                                                                return true;
+                                                            }
+                                                        } else {
+                                                            $this->displayError('403');
+                                                            return true;
+                                                        }
+                                                        break;
+                                                    case 'ban':
+                                                        if($user->can('admin_view')) {
+                                                            if($user->can('user_ban') && $user->getId() != $cur_user->getId() && ($user->can('user_edit_all') || !$cur_user->can('admin_view'))) {
+                                                                $context .= 'ban/';
+                                                                $ban = $cur_user->getBan();
+                                                                $unban = false;
+                                                                if(isset($_POST['form_user_ban_reason']) && isset($_POST['form_user_ban_duration'])) {
+                                                                    $cur_user->ban($_POST['form_user_ban_reason'], $_POST['form_user_ban_duration'] * 24 * 60 * 60, $user->getId());
+                                                                    $ban = $cur_user->getBan(true);
+                                                                    $this->smarty->assign('form_user_ban_success', $this->getIcon('hook') . 'Der Benutzer wurde gebannt.');
+                                                                }
+                                                                if(isset($_POST['form_user_ban_unban_submit']) && $ban) {
+                                                                    $ban->remove();
+                                                                    $ban = $cur_user->getBan(true);
+                                                                    $unban = true;
+                                                                }
+                                                                if($ban) {
+                                                                    $linkpath[] = array('title' => 'Entbannen', 'link' => $context);
+                                                                    $content .= '<h2>Benutzer ' . $cur_user->getUsername() . ' entbannen</h2>';
+                                                                    $this->smarty->assign('form_user_ban_unban', true);
+                                                                    $this->smarty->assign('form_user_ban_reason', $ban->getComment());
+                                                                    $until = $ban->getUntil() ? date(cbg_output::getFormat('date'), $ban->getUntil()) . ' um ' . date(cbg_output::getFormat('time'), $ban->getUntil()) : 'Unbestimmt';
+                                                                    $this->smarty->assign('form_user_ban_until', $until);
+                                                                } else {
+                                                                    $linkpath[] = array('title' => 'Bannen', 'link' => $context);
+                                                                    $content .= '<h2>Benutzer ' . $cur_user->getUsername() . ' bannen</h2>';
+                                                                    if($unban) {
+                                                                        $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Der Benutzer wurde entbannt.</strong></p>';
+                                                                    }
+                                                                }
+                                                                $content .= $this->smarty->fetch('interface/form_user_ban.tpl');
+                                                            } else {
+                                                                $this->displayError('403');
+                                                                return true;
+                                                            }
+                                                        } else {
+                                                            $this->displayError('403');
+                                                            return true;
+                                                        }
+                                                        break;
+                                                    default:
+                                                        $this->displayError('404');
+                                                        return true;
+                                                        break;
+                                                }
+                                            } else {
+                                                $this->displayError('404');
+                                                return true;
+                                            }
+                                        } catch(OutOfBoundsException $ex) {
+                                            header('Location: ' . $contextupper . 'search/');
+                                        }
+                                        break;
+                                    case 'search':
+                                        if($user->can('admin_view')) {
+                                            if($user->can('user_view')) {
+                                                //@todo Seitenlimit
+                                                $context .= 'search/';
+                                                $linkpath[] = array('title' => 'Benutzer suchen', 'link' => $context);
+                                                $content .= '<h2>Benutzer durchsuchen</h2>';
+                                                $content .= '<form method="post" action="' . $context . '">';
+                                                $usersearch = isset($_POST['username_search']) && strlen($_POST['username_search']) >= 1 ? cbg_output::cleanOutput($_POST['username_search']) : '';
+                                                $content .= '<input type="search" results="0" placeholder="Benutzername" id="username_search" name="username_search" value="' . $usersearch . '">&nbsp;';
+                                                $content .= '<input type="submit" value="Suchen">';
+                                                $content .= '</form>';
+                                                $results = 0;
+                                                foreach($this->cbg->getUsers($usersearch) as $cur_user) {
+                                                    /* @var $cur_user cbg_user */
+                                                    $email = $user->can('user_mail_access') && $cur_user->getEmail() ? ' (' . $cur_user->getEmail() . ')' : '';
+                                                    $content .= cbg_output::createBlock($contextupper . 'show/' . $cur_user->getId() . '/', $this->getUserDetailed($cur_user, true) . $email, $cur_user->getGroup()->getName());
+                                                    $results++;
+                                                }
+                                                if(!$usersearch || !$results) {
+                                                    if(!$results)
+                                                        $content .= '<p class="disabled">Keine passenden Benutzer gefunden.</p>';
+                                                }
+                                                break;
+                                            }
+                                            else {
+                                                $this->displayError('403');
+                                                return true;
+                                            }
+                                        } else {
+                                            $content .= 'To be implemented';
+                                        }
+                                        break;
+                                    case 'moderate':
+                                        if($user->can('user_moderate') || $user->can('user_ban')) {
+                                            $context .= 'moderate/';
+                                            $contextupper = $context;
+                                            $linkpath[] = array('title' => 'Moderation', 'link' => $context);
+                                            $link = isset($path[3]) ? $path[3] : 'overview';
+                                            switch($link) {
+                                                case 'overview':
+                                                    $content .= '<h2>Benutzer moderieren</h2>';
+                                                    $content .= cbg_output::createBlock($context . 'bans/', 'Gebannte Benutzer anzeigen', 'Alle gebannten Benutzer anzeigen und Bans verwalten.', !$user->can('user_ban'));
+                                                    $content .= cbg_output::createBlock($context . 'anticheat/', 'Betrugsverdachte anzeigen', 'Vermutete Betrugsverdachte und Heuristiken anzeigen.', !$user->can('user_moderate'));
+                                                    //$content .= cbg_output::createBlock($context . 'types/', 'Betrugsarten anzeigen', 'Verschiedene Betrugsarten und Erkennungstechniken anzeigen.', !$user->can('user_moderate'));
+                                                    break;
+                                                case 'bans':
+                                                    if($user->can('user_ban')) {
+                                                        $context .= 'bans/';
+                                                        $linkpath[] = array('title' => 'Bans', 'link' => $context);
+                                                        $content .= '<h2>Gebannte Benutzer anzeigen</h2>';
+                                                        $results = 0;
+                                                        foreach($this->cbg->getUsers(false, true) as $cur_user) {
+                                                            /* @var $cur_user cbg_user */
+                                                            $ban = $cur_user->getBan();
+                                                            if(!$ban || !$ban->exists())
+                                                                continue;
+                                                            if($cur_user->can('admin_view') && !$user->can('user_edit_all'))
+                                                                continue;
+                                                            $reason = $ban->getComment() ? cbg_output::parseOutput($ban->getComment(), true) : 'Keine Begründung';
+                                                            $email = $user->can('user_mail_access') && $cur_user->getEmail() ? ' (' . $cur_user->getEmail() . ')' : '';
+                                                            $until = $ban->getUntil() != 0 ? ' &raquo; ' . date($this->getFormat('date'), $ban->getUntil()) : '';
+                                                            $content .= cbg_output::createBlock(ROOT . 'game/users/show/' . $cur_user->getId() . '/', $this->getUserDetailed($cur_user, true) . $email . $until, $reason . ' (von ' . $this->getUserDetailed($ban->getBy(), true) . ').');
+                                                            $results++;
+                                                        }
+                                                        if(!$results) {
+                                                            $content .= '<p class="disabled">Keine gebannten Benutzer vorhanden.</p>';
+                                                        }
+                                                    } else {
+                                                        $this->displayError('403');
+                                                        return true;
+                                                    }
+                                                    break;
+                                                /* case 'types':
+                                                  if ($user->can('user_moderate')) {
+                                                  $context .= 'types/';
+                                                  $linkpath[] = array('title' => 'Betrugsarten', 'link' => $context);
+                                                  $content .= '<h2>Betrugsarten anzeigen</h2>';
+                                                  $content .= '<table>';
+                                                  $types = array(array('name' => 'Doppelaccount', 'desc' => 'Besitz von mehreren Accounts durch einen Spieler.'));
+                                                  foreach ($types as $type) {
+                                                  $content .= '<tr><td>' . $type['name'] . ':</td><td>' . $type['desc'] . '</td>';
+                                                  }
+                                                  $content .= '</table>';
+                                                  } else {
+                                                  $this->displayError('403');
+                                                  return true;
+                                                  }
+                                                  break; */
+                                                case 'anticheat':
+                                                    if($user->can('user_moderate')) {
+                                                        $context .= 'anticheat/';
+                                                        $linkpath[] = array('title' => 'Betrugsverdachte', 'link' => $context);
+                                                        $link = isset($path[4]) ? $path[4] : '';
+                                                        if($link) {
+                                                            try {
+                                                                $user_id = isset($path[4]) ? $path[4] : '';
+                                                                if(is_numeric($user_id)) {
+                                                                    $cur_user = $this->cbg->getUserById($user_id, false);
+                                                                    $scores = $this->cbg->getAntiCheat(1, $cur_user);
+                                                                    if(!isset($scores[0]))
+                                                                        throw new OutOfBoundsException('unknown anticheat: user ' . $cur_user->getId());
+                                                                    $score = $scores[0];
+                                                                    $link = isset($path[4]) ? $path[4] : 'view';
+                                                                    $context .= $cur_user->getId() . '/';
+                                                                    $linkpath[] = array('title' => $cur_user->getUsername(), 'link' => $context);
+                                                                    if(($score['player1']->getGroup()->getId() == $this->cbg->getDefaultGroup() && $score['player2']->getGroup()->getId() == $this->cbg->getDefaultGroup()) || $user->can('user_edit_all')) {
+                                                                        $content .= '<h2>Betrugsverdacht anzeigen</h2>';
+                                                                        $content .= '<table>';
+                                                                        $content .= '<tr><th>Betrugsart:</th><td>Doppelaccount</td></tr>';
+                                                                        $content .= '<tr><th>Benutzer 1:</th><td>' . $this->getUserDetailed($score['player1']) . '</td></tr>';
+                                                                        $content .= '<tr><th>Benutzer 2:</th><td>' . $this->getUserDetailed($score['player2']) . '</td></tr>';
+                                                                        $content .= '<tr><th>Punkte:</th><td><span class="error">' . $score['score'] . ' (aus 10)</span></td></tr>';
+                                                                        $days = 'an ' . $score['count'] . ' Tagen';
+                                                                        if($score['count'] == 1)
+                                                                            $days = 'an ' . $score['count'] . ' Tag';
+                                                                        $class = $score['count'] < 3 ? 'pending' : 'error';
+                                                                        $content .= '<tr><th>Anzahl:</th><td><span class="' . $class . '">' . $days . '</span></td></tr>';
+                                                                        $content .= '<tr><th>Zuletzt:</th><td>' . date($this->getFormat('datetime'), $score['time']) . '</td></tr>';
+                                                                        $content .= '</table>';
+                                                                        //$content .= cbg_output::createBlock($context, 'Benutzer verwarnen', 'Noch nicht implementiert.', $user->can('user_ban'));
+                                                                        $content .= cbg_output::createBlock(ROOT . 'game/users/show/' . $score['player1']->getId() . '/ban/', $this->getUserDetailed($score['player1'], true) . ' bannen', 'Den Benutzer aus dem System verweisen.', !$user->can('user_ban') || $score['player1']->getBan() || $user->getId() == $score['player1']->getId());
+                                                                        $content .= cbg_output::createBlock(ROOT . 'game/users/show/' . $score['player2']->getId() . '/ban/', $this->getUserDetailed($score['player2'], true) . ' bannen', 'Den Benutzer aus dem System verweisen.', !$user->can('user_ban') || $score['player2']->getBan() || $user->getId() == $score['player2']->getId());
+                                                                    }
+                                                                    else {
+                                                                        $this->displayError('403');
+                                                                        return true;
+                                                                    }
+                                                                } else {
+                                                                    header('Location: ' . $contextupper);
+                                                                    return true;
+                                                                }
+                                                            } catch(OutOfBoundsException $ex) {
+                                                                $this->displayError('404');
+                                                                return true;
+                                                            }
+                                                        } else {
+                                                            $scores = $this->cbg->getAntiCheat();
+                                                            /* $content .= '<h2>Betrugsversuche</h2>';
+                                                              $count = 0; */
+                                                            foreach($scores as $key => $score) {
+                                                                if(($score['player1']->can('admin_view') || $score['player2']->can('admin_view')) && !$user->can('user_edit_all')) {
+                                                                    $scores[$key] = null;
+                                                                }
+                                                                /*   if ($score['count'] <= 3)
+                                                                  continue;
+                                                                  if ($score['score'] <= 5)
+                                                                  continue;
+                                                                  if (!$scores[$key])
+                                                                  continue;
+                                                                  $content .= cbg_output::createBlock($context.$score['player1']->getId().'/', 'Doppelaccount - '.$score['score'].' Punkte', $this->getUserDetailed($score['player1'], true).' - '.$this->getUserDetailed($score['player2'], true));
+                                                                  $scores[$key] = null;
+                                                                  $count++; */
+                                                            }
+                                                            /* if (!$count) {
+                                                              $content .= '<p class="unimportant">Es liegen keine Betrugsversuche vor.</p>';
+                                                              } */
+                                                            $content .= '<h2>Betrugsverdachte</h2>';
+                                                            $count = 0;
+                                                            foreach($scores as $score) {
+                                                                if(!$score)
+                                                                    continue;
+                                                                $content .= cbg_output::createBlock($context . $score['player1']->getId() . '/', 'Doppelaccount - ' . $score['score'] . ' Punkte', $this->getUserDetailed($score['player1'], true) . ' - ' . $this->getUserDetailed($score['player2'], true));
+                                                                $count++;
+                                                            }
+                                                            if(!$count) {
+                                                                $content .= '<p class="unimportant">Es liegen keine Betrugsverdachte vor.</p>';
+                                                            }
+                                                        }
+                                                    } else {
+                                                        $this->displayError('403');
+                                                        return true;
+                                                    }
+                                                    break;
+                                                default:
+                                                    $this->displayError('404');
+                                                    return true;
+                                                    break;
+                                            }
+                                        } else {
+                                            $this->displayError('403');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'statistics':
+                                        if($user->can('admin_view') && !$user->can('user_view')) {
+                                            $this->displayError('403');
+                                            return true;
+                                        } else {
+                                            $link = isset($path[4]) ? $path[4] : 'view';
+                                            $context .= 'statistics/';
+                                            $linkpath[] = array('title' => 'Statistiken', 'link' => $context);
+                                            $content .= '<h2>Statistiken</h2>';
+                                        }
+                                        break;
+                                    /* case 'add':
+                                      if ($user->can('admin_view')) {
+                                      if ($user->can('user_add')) {
+                                      $context .= 'add/';
+                                      $linkpath[] = array('title' => 'Benutzer hinzufügen', 'link' => $context);
+                                      } else {
+                                      $this->displayError('403');
+                                      return true;
+                                      }
+                                      } else {
+                                      $this->displayError('403');
+                                      return true;
+                                      }
+                                      break; */
+                                    case 'groups':
+                                        if($user->can('admin_view') && $user->can('group_view') || $user->can('group_add')) {
+                                            $context .= 'groups/';
+                                            $contextupper2 = $contextupper;
+                                            $contextupper = $context;
+                                            $link = isset($path[3]) ? $path[3] : 'list';
+                                            switch($link) {
+                                                case 'list':
+                                                    if($user->can('group_view')) {
+                                                        $context .= 'list/';
+                                                        $linkpath[] = array('title' => 'Gruppen anzeigen', 'link' => $context);
+                                                        $content .= '<h2>Gruppen verwalten</h2>';
+                                                        foreach($this->cbg->getGroups() as $group) {
+                                                            $detail = '';
+                                                            if($group->getId() == $this->cbg->getDefaultGroup())
+                                                                $detail .= ' (Standardgruppe)';
+                                                            $content .= cbg_output::createBlock($contextupper . 'show/' . $group->getId() . '/', '<img src="' . ROOT . 'css/img/ranks/' . $group->getImage() . '" alt="' . $group->getName() . '" title="' . $group->getName() . '" class="rank" height="16" width="16">' . $group->getName() . $detail, $group->getDescription());
+                                                        }
+                                                    }
+                                                    else {
+                                                        $this->displayError('404');
+                                                        return true;
+                                                    }
+                                                    break;
+                                                case 'show':
+                                                    if($user->can('group_view')) {
+                                                        $context .= 'show/';
+                                                        $linkpath[] = array('title' => 'Gruppe', 'link' => $context);
+                                                        try {
+                                                            $group_id = isset($path[4]) ? $path[4] : '0';
+                                                            if(is_numeric($group_id)) {
+                                                                $cur_group = $this->cbg->getGroupById($group_id);
+                                                                $context .= $group_id . '/';
+                                                                $linkpath[] = array('title' => $cur_group->getName(), 'link' => $context);
+                                                                $link = isset($path[5]) ? $path[5] : 'view';
+                                                                switch($link) {
+                                                                    case 'view':
+                                                                        $content .= '<h2>Gruppeninformationen anzeigen</h2>';
+                                                                        if($user->getGroup()->getId() == $cur_group->getId())
+                                                                            $content .= '<p><strong class="success">' . $this->getIcon('hook') . 'Du befindest dich in dieser Gruppe.</strong></p>';
+                                                                        if(!$cur_group->getMemberCount())
+                                                                            $content .= '<p><strong class="error">' . $this->getIcon('cross') . 'Diese Gruppe hat keine Mitglieder.</strong></p>';
+                                                                        $content .= '<table>';
+                                                                        $content .= '<tr><th>Gruppe:</th>' . '<td>' . '<img src="' . ROOT . 'css/img/ranks/' . $cur_group->getImage() . '" alt="' . $cur_group->getName() . '" title="' . $cur_group->getName() . '" class="rank" height="16" width="16">' . $cur_group->getName() . '</td></tr>';
+                                                                        $content .= '<tr><th>Beschreibung:</th>' . '<td>' . $cur_group->getDescription() . '<td>';
+                                                                        $content .= '<tr><th>Mitglieder:</th>' . '<td>' . $cur_group->getMemberCount() . '<td>';
+                                                                        $content .= '<tr><td>&nbsp;</td>' . '<td><a href="' . $context . 'members/">Mitglieder anzeigen</a> &raquo;<td>';
+                                                                        $content .= '</table>';
+                                                                        if($user->can('group_edit')) {
+                                                                            $content .= cbg_output::createBlock($context . 'edit/', 'Gruppe bearbeiten', 'Gruppendaten bearbeiten und Details anzeigen.');
+                                                                            $content .= cbg_output::createBlock($context . 'rights/', 'Gruppenrechte zuweisen', 'Rechte der Gruppe anzeigen und zuordnen.');
+                                                                        }
+                                                                        if($user->can('user_edit_all'))
+                                                                            $content .= cbg_output::createBlock($contextupper2 . 'override/set/' . $cur_group->getId() . '/', 'Berechtigungen testen', 'Die Rechte dieser Gruppe testen.', $user->getGroup()->getId() == $cur_group->getId());
+                                                                        break;
+                                                                    case 'members':
+                                                                        $context .= 'members/';
+                                                                        $linkpath[] = array('title' => 'Mitglieder', 'link' => $context);
+                                                                        $content .= '<h2>Gruppenmitglieder anzeigen</h2>';
+                                                                        $results = 0;
+                                                                        foreach($cur_group->getMembers() as $cur_user) {
+                                                                            /* @var $cur_user cbg_user */
+                                                                            $email = $user->can('user_mail_access') && $cur_user->getEmail() ? ' (' . $cur_user->getEmail() . ')' : '';
+                                                                            $content .= cbg_output::createBlock(ROOT . 'game/users/show/' . $cur_user->getId() . '/', $this->getUserDetailed($cur_user, true) . $email, $cur_user->getGroup()->getName());
+                                                                            $results++;
+                                                                        }
+                                                                        if(!$results) {
+                                                                            $content .= '<p class="disabled">Keine passenden Benutzer gefunden.</p>';
+                                                                        }
+                                                                        break;
+                                                                    default:
+                                                                        $this->displayError('404');
+                                                                        return true;
+                                                                        break;
+                                                                }
+                                                            } else {
+                                                                $this->displayError('404');
+                                                                return true;
+                                                            }
+                                                        } catch(OutOfBoundsException $ex) {
+                                                            header('Location: ' . $contextupper);
+                                                            return true;
+                                                        }
+                                                        break;
+                                                    } else {
+                                                        $this->displayError('404');
+                                                        return true;
+                                                    }
+
+                                                default:
+                                                    $this->displayError('404');
+                                                    return true;
+                                                    break;
+                                            }
+                                        } else {
+                                            $this->displayError('403');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'override':
+                                        if($user->can('user_edit_all', true)) {
+                                            $context .= 'override/';
+                                            $contextupper = $context;
+                                            $linkpath[] = array('title' => 'Rechte testen', 'link' => $context);
+                                            $link = isset($path[3]) ? $path[3] : 'set';
+                                            switch($link) {
+                                                case 'set':
+                                                    $group = isset($path[4]) ? $path[4] : '';
+                                                    if(isset($_POST['group']) && is_numeric($_POST['group']) && $_POST['group'] > 0 || $group && is_numeric($group) && $group > 0) {
+                                                        if(isset($_POST['group'])) {
+                                                            $group = $_POST['group'];
+                                                        }
+                                                        $this->cbg->setSessionData('user_group_temp', $group);
+                                                        header('Location: ' . ROOT . 'game/');
+                                                        return true;
+                                                    } else {
+                                                        $content .= '<h2>Berechtigungen testen</h2>';
+                                                        if($user->groupOverrideActive()) {
+                                                            $content .= '<form action="' . $context . 'reset/" method="post">';
+                                                            $content .= '<table>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>Berechtigungen:</td>';
+                                                            $content .= '<td>' . $user->getGroup(false, true)->getName() . '-Rechte</td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>Rechte testen:</td>';
+                                                            $content .= '<td>' . $user->getGroup()->getName() . '-Rechte</td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>&nbsp;</td>';
+                                                            $content .= '<td><input type="submit" value="Zurücksetzen"></td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '</table>';
+                                                            $content .= '</form>';
+                                                        } else {
+                                                            $content .= '<form action="' . $context . '" method="post">';
+                                                            $content .= '<table>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>Berechtigungen:</td>';
+                                                            $content .= '<td>' . $user->getGroup(false, true)->getName() . '-Rechte</td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>Rechte testen:</td>';
+                                                            $content .= '<td><select name="group">';
+                                                            foreach($this->cbg->getGroups() as $group) {
+                                                                if($group->getId() == $user->getGroup(false, true)->getId())
+                                                                    continue;
+                                                                $content .= '<option value="' . $group->getId() . '">' . $group->getName() . '-Rechte</option>';
+                                                            }
+                                                            $content .= '</select></td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '<tr>';
+                                                            $content .= '<td>&nbsp;</td>';
+                                                            $content .= '<td><input type="submit" value="Rechte testen" style="padding: 0px 10px;"></td>';
+                                                            $content .= '</tr>';
+                                                            $content .= '</table>';
+                                                            $content .= '</form>';
+                                                        }
+                                                    }
+                                                    break;
+                                                case 'reset':
+                                                    $context .= 'reset/';
+                                                    $this->cbg->setSessionData('user_group_temp', 0);
+                                                    header('Location: ' . $contextupper);
+                                                    break;
+                                                default:
+                                                    $this->displayError('404');
+                                                    return true;
+                                                    break;
+                                            }
+                                        }
+                                        else {
+                                            $this->displayError('403');
+                                            return true;
+                                        }
+                                        break;
+                                    case 'invite':
+                                        if($this->cbg->getOpenRegistration() || $user->can('user_add') || $this->cbg->getMaximumInvites() != 0 || $user->getInvites() > 0 || count($user->getKeys()) != 0) {
+                                            $context .= 'invite/';
+                                            $linkpath[] = array('title' => 'Benutzer einladen', 'link' => $context);
+                                            $content .= '<h2>Einen Benutzer einladen</h2>';
+                                            $keyscreated = $user->getKeys();
+                                            $keyscount = count($keyscreated);
+                                            if($user->can('user_add')) {
+                                                $this->smarty->assign('form_invite_admin', true);
+                                                if($user->can('user_edit_all')) {
+                                                    $this->smarty->assign('form_invite_admin_all', true);
+                                                    $groups = array();
+                                                    foreach($this->cbg->getGroups() as $group) {
+                                                        $array = array();
+                                                        $array['id'] = $group->getId();
+                                                        $array['name'] = $group->getName();
+                                                        $array['selected'] = $group->getId() == $this->cbg->getDefaultGroup();
+                                                        $groups[] = $array;
+                                                    }
+                                                    $this->smarty->assign('form_invite_groups', $groups);
+                                                }
+                                                $keysmissing = isset($_POST['form_invite_request']) ? $_POST['form_invite_request'] : 0;
+                                            } else {
+                                                $keysmax = $this->cbg->getMaximumInvites();
+                                                $keysleft = $this->cbg->getMaximumInvites() + $user->getInvites();
+                                                $keysmissing = $keysleft - $keyscount;
+                                            }
+                                            if(!$this->cbg->getOpenRegistration() || $user->can('user_edit_all')) {
+                                                if($keysmissing > 0) {
+                                                    $group = $user->can('user_edit_all') && isset($_POST['form_invite_group']) ? $_POST['form_invite_group'] : $this->cbg->getDefaultGroup();
+                                                    $this->cbg->createKeys($keysmissing, $user->getId(), $group);
+                                                    $keyscreated = $user->getKeys();
+                                                }
+                                            }
+                                            $keysusable = 0;
+                                            foreach($keyscreated as $key) {
+                                                if($key['valid'])
+                                                    $keysusable++;
+                                            }
+                                            $this->smarty->assign('form_invite_invites_left', $keysusable);
+                                            $this->smarty->assign('form_invite_keys', $keyscreated);
+                                            if($this->cbg->getOpenRegistration()) {
+                                                $this->smarty->assign('form_invite_open_registration', true);
+                                            }
+                                            $content .= $this->smarty->fetch('interface/form_invite.tpl');
+                                        } else {
+                                            $this->displayError('403');
+                                            return true;
+                                        }
+                                        break;
+                                    default:
+                                        $this->displayError('404');
+                                        return true;
+                                        break;
+                                }
+                                break;
+                            case 'settings':
+                                if($user->can('admin_view') && $user->can('project_settings')) {
+                                    $context .= 'settings/';
+                                    $contextupper = $context;
+                                    //$linkpath[] = array('title' => 'Projekteinstellungen', 'link' => $context);
+                                    $link = isset($path[2]) ? $path[2] : 'main';
+                                    switch($link) {
+                                        case 'main':
+                                            $context .= 'main/';
+                                            //$content .= '<h2>Projekteinstellungen verwalten</h2>';
+                                            //$content .= cbg_output::createBlock($contextupper . 'statistics/', 'Statistiken', 'Statistiken des Projekts anzeigen und zurücksetzen.', false);
+                                            //$content .= cbg_output::createBlock($contextupper . 'config/', 'Projektkonfiguration', 'Projektvariablen anzeigen und modifizieren.', false);
+                                            //$content .= cbg_output::createBlock($contextupper . 'maintenance/', 'Projektwartung', 'Projektwartungen planen und ausführen.', false);
+                                            //$content .= cbg_output::createBlock($contextupper . 'api/', 'Kommandozeile', 'Auf die Projekt-API zugreifen und Befehle ausführen.', false);
+                                            break;
+                                        case 'maintenance':
+                                            //$context .= 'maintenance/';
+                                            //$linkpath[] = array('title' => 'Wartung', 'link' => $context);
+                                            //$content .= '<h2>Projektwartungen planen</h2>';
+                                            break;
+                                        case 'api':
+                                            $context .= 'api/';
+                                            $linkpath[] = array('title' => 'Kommandozeile', 'link' => $context);
+                                            $content .= '<h2>Kommandozeile</h2>';
+                                            $content .= '<form action="." method="post">';
+                                            $content .= '<table>';
+                                            $cmd = '';
+                                            if(isset($_POST['cmd_line'])) {
+                                                $cmd = $_POST['cmd_line'];
+                                                try {
+                                                    $result = $this->cbg->apiCall($cmd);
+                                                    $content .= '<tr><td class="success">' . $this->getIcon('hook') . print_r($result, true) . '</td></tr>';
+                                                } catch(Exception $ex) {
+                                                    $content .= '<tr><td><strong class="error">' . $this->getIcon('cross') . $ex->getMessage() . '</strong></td></tr>';
+                                                }
+                                            }
+                                            $content .= '<tr><td><textarea cols="60" rows="4" placeholder="Befehl" name="cmd_line">' . cbg_output::cleanOutput($cmd) . '</textarea></td></tr>';
+                                            $content .= '<tr><td><input type="submit" value="Ausführen"></td></tr>';
+                                            $content .= '</table>';
+                                            $content .= '</form>';
+                                            break;
+                                        case 'statistics':
+                                            $context .= 'statistics/';
+                                            //$linkpath[] = array('title' => 'Statistiken', 'link' => $context);
+                                            //$content .= '<h2>Live-Daten</h2>';
+                                            //$content .= '<table>';
+                                            //$content .= '<tr><td>Benutzer online</td><td>' . $this->cbg->getUsersOnlineCount() . '</td></tr>';
+                                            //$content .= '</table>';
+                                            //
+                                            //$content .= '<h2>Statistiken</h2>';
+
+                                            break;
+                                        case 'config':
+                                            $context .= 'config/';
+                                            //$linkpath[] = array('title' => 'Konfiguration', 'link' => $context);
+                                            //if(isset($_POST['config_form_new_config']) && !empty($_POST['config_form_new_config']) && isset($_POST['config_form_new_value'])) {
+                                            //    $this->cbg->setConfig($_POST['config_form_new_config'], $_POST['config_form_new_value']);
+                                            //}
+                                            //$content .= '<h2>Konfiguration</h2>';
+                                            //if(isset($_POST['config_form_save'])) {
+                                            //    $content .= '<strong class="success">' . $this->getIcon('hook') . 'Änderungen gespeichert.</strong>';
+                                            //}
+                                            //$content .= '<form action="." method="post">';
+                                            //$content .= '<table>';
+                                            //foreach($this->cbg->getConfig() as $config => $value) {
+                                            //    $changes = '';
+                                            //    if(isset($_POST['config_form_' . $config]) && $_POST['config_form_' . $config] != $value) {
+                                            //        $value = $_POST['config_form_' . $config];
+                                            //        $this->cbg->setConfig($config, $value);
+                                            //    }
+                                            //    $content .= '<tr><td><label for="config_form_' . $config . '">' . $config . '</label></td><td><input type="text" value="' . $value . '" id="config_form_' . $config . '" name="config_form_' . $config . '" placeholder="0"></td><td class="unimportant">' . $changes . '</td></tr>';
+                                            //}
+                                            //$content .= '<tr><td><input type="text" name="config_form_new_config" placeholder="Neue Variable"></td><td><input type="text" name="config_form_new_value" placeholder="Wert"></td></tr>';
+                                            //$content .= '<tr><td>&nbsp;</td><td><input type="submit" name="config_form_save" value="Speichern"><input type="reset" value="Zurücksetzen"></td></tr>';
+                                            //$content .= '</table>';
+                                            //$content .= '</form>';
+                                            break;
+                                        default:
+                                            $this->displayError('404');
+                                            return true;
+                                            break;
+                                    }
+                                } else {
+                                    $this->displayError('403');
+                                    return true;
+                                }
+                                break;
+                            case 'settlements':
+                                if(!$user->can('admin_view', true)) {
+                                    $context .= 'settlements/';
+                                    $contextupper = $context;
+                                    $linkpath[] = array('title' => 'Siedlungen', 'link' => $context);
+                                    $link = isset($path[2]) ? $path[2] : 'list';
+                                    switch($link) {
+                                        case 'list':
+                                            $context .= 'list/';
+                                            $content .= '<h2>Siedlungen</h2>';
+                                            $count = 0;
+                                            foreach($user->getSettlements() as $settlement) {
+                                                $content .= cbg_output::createBlock($contextupper . 'select/' . $settlement->getId() . '/', $settlement->getName());
+                                                $count++;
+                                            }
+                                            if($count == 0) {
+                                                $content .= '<p><strong class="error">' . $this->getIcon('cross') . 'Du besitzt keine Siedlung.</strong></p>';
+                                            }
+                                            $content .= '</table>';
+                                            $content .= '<h2>Ereignisse</h2>';
+                                            $content .= cbg_output::createBlock($contextupper . 'history/', 'Ereignisse anzeigen', 'Die letzen Ereignisse aller Siedlungen anzeigen.');
+
+                                            break;
+                                        case 'select';
+                                            $context .= 'select/';
+                                            $id = isset($path[3]) && is_numeric($path[3]) ? $path[3] : '0';
+                                            try {
+                                                $settlement = $this->cbg->getSettlementById($id);
+                                                if($settlement->getOwner() && $settlement->getOwner()->getId() == $user->getId()) {
+                                                    $this->cbg->setCurrentSettlement($settlement->getId());
+                                                    header('Location: ' . $contextupper . 'current/');
+                                                    return true;
+                                                    break;
+                                                } else {
+                                                    $this->displayError('403');
+                                                    return true;
+                                                }
+                                            } catch(OutOfBoundsException $ex) {
+                                                $this->displayError('404');
+                                                return true;
+                                            }
+                                            break;
+                                        case 'current':
+                                            $context .= 'current/';
+                                            $contextupper = $context;
+                                            if($user_settlement) {
+                                                $linkpath[] = array('title' => $user_settlement->getName(), 'link' => $context);
+                                                $this->smarty->assign('game_show_settlements', true);
+                                                $link = isset($path[3]) ? $path[3] : 'show';
+                                                switch($link) {
+                                                    case 'show':
+                                                        $context .= 'show/';
+                                                        $content .= '<table>';
+                                                        $content .= '<tr>';
+                                                        $content .= '<td>';
+                                                        $content .= '<h2>Baumaterialien</h2>';
+                                                        $content .= '<table>';
+                                                        $content .= '<tr>';
+                                                        $content .= '<td>' . $this->objectBox($this->cbg->getObject('rock'), $user_settlement->getObjectCount('rock'), '#', !$user_settlement->has('rock')) . '</td>';
+                                                        $content .= '<td>' . $this->objectBox($this->cbg->getObject('wood'), $user_settlement->getObjectCount('wood'), '#', !$user_settlement->has('wood')) . '</td>';
+                                                        $content .= '<td>' . $this->objectBox($this->cbg->getObject('metal'), $user_settlement->getObjectCount('metal'), '#', !$user_settlement->has('metal')) . '</td>';
+                                                        $content .= '<td>' . $this->objectBox($this->cbg->getObject('concrete'), $user_settlement->getObjectCount('concrete'), '#', !$user_settlement->has('concrete')) . '</td>';
+                                                        $content .= '</tr>';
+                                                        $content .= '</table>';
+                                                        $content .= '</td>';
+                                                        $content .= '<td>';
+                                                        $content .= '<h2>Ansicht</h2>';
+                                                        $content .= cbg_output::createBlock($contextupper . 'buildings/', 'Gebäude', 'Den Aufbau der Siedlung anzeigen und Gebäude verwalten.', !$user->can('user_settlement_rename'));
+                                                        $content .= cbg_output::createBlock($contextupper . 'research/', 'Forschung', 'Verfügbare Forschungsprojekte anzeigen und forschen.', true);
+                                                        $content .= '</td>';
+                                                        $content .= '</tr>';
+                                                        $content .= '</table>';
+                                                        $content .= '<h2>Aktionen</h2>';
+                                                        $content .= cbg_output::createBlock($contextupper . 'rename/', 'Siedlung umbenennen', 'Die Siedlung mit einem neuen Namen versehen.', !$user->can('user_settlement_rename'));
+                                                        $content .= cbg_output::createBlock($contextupper . 'rename/', 'Siedlung aufgeben', 'Die Siedlung verlassen und alle Gebäude und Ressourcen verlieren.', !$user->can('user_settlement_remove'));
+                                                        break;
+                                                    case 'rename':
+                                                        if($user->can('user_settlement_rename')) {
+                                                            $context .= 'rename/';
+                                                            $linkpath[] = array('title' => 'Umbenennen', 'link' => $context);
+                                                            $content .= '<h2>Siedlung umbennen</h2>';
+                                                            if(isset($_POST['user_settlement_name'])) {
+                                                                //@todo validSettlement($name)
+                                                                $name = cbg_output::cleanOutput($_POST['user_settlement_name']);
+                                                                try {
+                                                                    $user_settlement->setName($name);
+                                                                    $user_settlement->save();
+                                                                    header('Location: ' . $context . 'done/');
+                                                                    return true;
+                                                                } catch(Exception $ex) {
+                                                                    $content .= '<strong class="error">' . $this->getIcon('cross') . 'Ungültiger Name.</strong>';
+                                                                }
+                                                            } else if(isset($path[4]) && $path[4] == 'done') {
+                                                                $content .= '<strong class="success">' . $this->getIcon('hook') . 'Siedlung wurde umbenannt.</strong>';
+                                                            }
+                                                            $content .= '<form action="." method="post">';
+                                                            $content .= '<table>';
+                                                            $content .= '<tr><th>Name:</th><td><input type="text" name="user_settlement_name" value="' . $user_settlement->getName() . '"></td></tr>';
+                                                            $content .= '<tr><td>&nbsp;</td><td><input type="submit" value="Umbenennen"></td></tr>';
+                                                            $content .= '</table>';
+                                                            $content .= '</form>';
+                                                        } else {
+                                                            $this->displayError('403');
+                                                            return true;
+                                                        }
+                                                        break;
+                                                    case 'buildings':
+                                                        $context .= 'buildings/';
+                                                        $contextupper = $context;
+                                                        $linkpath[] = array('title' => 'Gebäude', 'link' => $context);
+                                                        $link = isset($path[4]) ? $path[4] : 'view';
+                                                        switch($link) {
+                                                            case 'view':
+                                                                $context .= 'view/';
+                                                                $content .= '<h2>Gebäude</h2>';
+                                                                $content .= '<div id="buildings">';
+                                                                $buildings = array();
+                                                                $random = !rand(0, 10) ? '_wipf' : '';
+                                                                if($user_settlement->getLeftSearch() != 0) {
+                                                                    $buildings[] = array('link' => $contextupper . 'search/left/', 'heading' => 'Neuen Bauplatz suchen', 'description' => 'Suche läuft - ' . $this->getRemainingTime($user_settlement->getLeftSearch() - $this->cbg->getServertime()) . ' verbleibend', 'image' => 'fow_left' . $random, 'disabled' => true);
+                                                                } else {
+                                                                    $buildings[] = array('link' => $contextupper . 'search/left/', 'heading' => 'Neuen Bauplatz suchen', 'description' => 'Auf der linken Seite der Siedlung nach einem neuen Bauplatz suchen.', 'image' => 'fow_left' . $random);
+                                                                }
+                                                                $settlement_buildings = $user_settlement->getBuildings();
+                                                                foreach($settlement_buildings as $building) {
+                                                                    if($building->isFree()) {
+                                                                        $buildings[] = array('link' => $contextupper . 'build/' . $building->getId() . '/', 'heading' => 'Freier Bauplatz', 'description' => 'An dieser Stelle kann ein neues Gebäude errichtet werden.', 'image' => 'free');
+                                                                    } else {
+                                                                        if($building->isBuilding()) {
+                                                                            $title = $building->getLevel() == 0 ? 'Errichtung läuft' : 'Ausbau läuft';
+                                                                            $buildings[] = array('link' => $contextupper . 'build/' . $building->getId() . '/', 'heading' => $building->getName(), 'description' => $title . ' - ' . $this->getRemainingTime($building->getCompletion() - $this->cbg->getServertime()) . ' verbleibend', 'image' => $building->getImage());
+                                                                        } else {
+                                                                            $title = $building->getBuilding()->getMaximumLevel() != 1 ? ' &laquo; Stufe ' . $building->getLevel() : '';
+                                                                            if(true)
+                                                                                $title .= ' &laquo; <strong class="success">Aktiv</strong>';
+                                                                            $buildings[] = array('link' => $contextupper . 'build/' . $building->getId() . '/', 'heading' => $building->getName(), 'description' => 'Gebäude' . $title, 'image' => $building->getImage());
+                                                                        }
+                                                                    }
+                                                                }
+                                                                if($user_settlement->getRightSearch() != 0) {
+                                                                    $buildings[] = array('link' => $contextupper . 'search/right/', 'heading' => 'Neuen Bauplatz suchen', 'description' => 'Suche läuft - ' . $this->getRemainingTime($user_settlement->getRightSearch() - $this->cbg->getServertime()) . ' verbleibend', 'image' => 'fow_right', 'disabled' => true);
+                                                                } else {
+                                                                    $buildings[] = array('link' => $contextupper . 'search/right/', 'heading' => 'Neuen Bauplatz suchen', 'description' => 'Auf der rechten Seite der Siedlung nach einem neuen Bauplatz suchen.', 'image' => 'fow_right');
+                                                                }
+                                                                foreach($buildings as $building) {
+                                                                    $disabled = isset($building['disabled']) && $building['disabled'] == true ? true : false;
+                                                                    $title = $building['heading'];
+                                                                    $content .= '<div class="">' . cbg_output::createBlock($building['link'], $building['heading'], $building['description'], $disabled) . '</div><img src="' . ROOT . 'css/img/landscape/' . $building['image'] . '.png" alt="' . $building['heading'] . '" title="' . $title . '">';
+                                                                }
+                                                                $content .= '</div>';
+                                                                break;
+                                                            case 'search':
+                                                                $context .= 'search/';
+                                                                $linkpath[] = array('title' => 'Erweitern', 'link' => $context);
+                                                                if(isset($path[5]) && ($path[5] == 'left' || $path[5] == 'right')) {
+                                                                    $content .= '<h2>Neuen Bauplatz suchen</h2>';
+                                                                    if($path[5] == 'left') {
+                                                                        $context .= 'left/';
+                                                                        $linkpath[] = array('title' => 'Links', 'link' => $context);
+                                                                        if($user_settlement->getLeftSearch() == 0) {
+                                                                            $user_settlement->searchLeft('10');
+                                                                            $user_settlement->save();
+                                                                        }
+                                                                    } else {
+                                                                        $context .= 'right/';
+                                                                        $linkpath[] = array('title' => 'Rechts', 'link' => $context);
+                                                                        if($user_settlement->getRightSearch() == 0) {
+                                                                            $user_settlement->searchRight('10');
+                                                                            $user_settlement->save();
+                                                                        }
+                                                                    }
+                                                                    header('Location: ' . $contextupper);
+                                                                    return true;
+                                                                } else {
+                                                                    $this->displayError('404');
+                                                                    return true;
+                                                                }
+                                                                break;
+                                                            case 'build':
+                                                                $context .= 'build/';
+                                                                $building_id = isset($path[5]) ? $path[5] : 0;
+                                                                if(is_numeric($building_id)) {
+                                                                    $context .= $building_id . '/';
+                                                                    try {
+                                                                        $building = $this->cbg->getBuildingById($building_id);
+                                                                        if($building->getSettlement() == $user_settlement->getId()) {
+                                                                            $building->update($this->cbg->getServertime());
+                                                                            $free = $building->isFree();
+                                                                            if($free) {
+                                                                                $linkpath[] = array('title' => 'Errichten', 'link' => $context);
+                                                                                $content .= '<h2>Gebäude errichten</h2>';
+                                                                                //@todo Gebäude errichten
+                                                                                //$building->build('chemical', 6000);
+                                                                                //header('Location: '.$contextupper);
+                                                                                //exit();
+                                                                                foreach(array() as $building) {
+                                                                                    $content .= cbg_output::createBlock('1', '2', '3', false);
+                                                                                }
+                                                                            } else {
+                                                                                $linkpath[] = array('title' => $building->getName(), 'link' => $context);
+                                                                                if(isset($_POST['building_do'])) {
+                                                                                    if(!$building->isBuilding()) {
+                                                                                        $building->scheduleUpgrade(6000);
+                                                                                        $building->save();
+                                                                                    }
+                                                                                }
+                                                                                $content .= '<h2>Gebäude</h2>';
+                                                                                $content .= '<form action="." method="post">';
+                                                                                $content .= '<table>';
+                                                                                $content .= '<tr><th>Gebäude:</th><td>' . $building->getName() . '</td></tr>';
+                                                                                $content .= '<tr><th>Beschreibung:</th><td>' . $building->getDescription() . '</td></tr>';
+                                                                                $upgrade = false;
+                                                                                $show_upgrade = false;
+                                                                                if($building->getBuilding()->getMaximumLevel() == 0 || $building->getLevel() < $building->getBuilding()->getMaximumLevel()) {
+                                                                                    $upgrade = true;
+                                                                                }
+                                                                                if($building->getBuilding()->getMaximumLevel() != 1) {
+                                                                                    $show_upgrade = true;
+                                                                                }
+                                                                                if($building->getLevel() != 0 && $show_upgrade) {
+                                                                                    $details = !$upgrade ? ' &raquo; <span>Kein Ausbau möglich</span>' : '';
+                                                                                    $content .= '<tr><th>Ausbau:</th><td>Stufe ' . $building->getLevel() . $details . '</td></tr>';
+                                                                                }
+                                                                                if($building->isBuilding() || $upgrade) {
+                                                                                    $action = '';
+                                                                                    if($building->isBuilding()) {
+                                                                                        $title = $building->getLevel() == 0 ? 'Errichtung läuft' : 'Ausbau auf Stufe ' . ($building->getLevel() + 1);
+                                                                                        $content .= '<tr><th>Aktion:</th><td>' . $title . ' - ' . $this->getRemainingTime($building->getCompletion() - $this->cbg->getServertime()) . ' verbleibend' . '</td></tr>';
+                                                                                        $action = 'Ausbau abbrechen';
+                                                                                    } else {
+                                                                                        $action = 'Gebäude ausbauen';
+                                                                                    }
+                                                                                    $content .= '<tr><th>&nbsp;</th><td><input type="submit" name="building_do" value="' . $action . '"><input type="submit" name="building_remove" value="Gebäude entfernen"></td></tr>';
+                                                                                } else {
+                                                                                    $content .= '<tr><th>&nbsp;</th><td><input type="submit" value="Gebäude ausbauen" disabled><input type="submit" name="building_remove" value="Gebäude entfernen"></td></tr>';
+                                                                                }
+                                                                                $content .= '</table>';
+                                                                                $content .= '</form>';
+                                                                                if(!$building->isBuilding()) {
+                                                                                    if($building->is('homebase')) {
+                                                                                        $content .= '<h2>Heimatbasis</h2>';
+                                                                                        if(false) {
+                                                                                            $content .= '<p>Dieses Gebäude ist Heimatbasis.</p>';
+                                                                                        } else {
+                                                                                            $content .= '<p>Dieses Gebäude kann Heimatbasis werden.</p>';
+                                                                                            $content .= cbg_output::createBlock('#', 'Zur Heimatbasis machen', 'Eine Flagge im Gebäude platzieren und es damit zur Heimatbasis erklären.', false);
+                                                                                        }
+                                                                                    }
+                                                                                    if($building->is('mine')) {
+                                                                                        $content .= '<h2>Mine</h2>';
+                                                                                        $content .= '<p>Dieses Gebäude kann Rohstoffe aus dem Erdreich abbauen.</p>';
+                                                                                        $content .= cbg_output::createBlock('#', 'Neues Vorkommen suchen', 'In dieser Mine nach einem neuen Vorkommen suchen.', false);
+                                                                                        //foreach() {
+                                                                                        $content .= cbg_output::createBlock('#', 'Goldvorkommen ' . $this->makeRomanNumeral(3), rand(1, 126) . '/126 Gold verbleibend', false);
+                                                                                        $content .= cbg_output::createBlock('#', 'Erzvorkommen ' . $this->makeRomanNumeral(4), rand(1, 1301) . '/1301 Erz verbleibend', false);
+                                                                                        //}
+                                                                                    }
+                                                                                    if($building->is('sawmill')) {
+                                                                                        $content .= '<h2>Sägemühle</h2>';
+                                                                                        $content .= '<p>Dieses Gebäude kann Bäume fällen.</p>';
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        } else {
+                                                                            $this->displayError('404');
+                                                                            return true;
+                                                                        }
+                                                                    } catch(OutOfBoundsException $ex) {
+                                                                        $this->displayError('404');
+                                                                        return true;
+                                                                    }
+                                                                } else {
+                                                                    header('Location: ' . $contextupper);
+                                                                    return true;
+                                                                }
+                                                                break;
+                                                            default:
+                                                                return $this->displayError('404');
+                                                                break;
+                                                        }
+                                                        break;
+                                                    default:
+                                                        return $this->displayError('404');
+                                                        break;
+                                                }
+                                            } else {
+                                                header('Location: ' . ROOT . 'game/settlements/');
+                                                return true;
+                                            }
+                                            break;
+                                        case 'history':
+                                            $context .= 'history/';
+                                            $linkpath[] = array('title' => 'Ereignisse', 'link' => $context);
+                                            $content .= '<h2>Siedlungsereignisse</h2>';
+                                            $content .= $this->getFullHistory($user);
+                                            break;
+                                        default:
+                                            $this->displayError('404');
+                                            return true;
+                                            break;
+                                    }
+                                } else {
+                                    $this->displayError('403');
+                                    return true;
+                                }
+                                break;
+                            default:
+                                $this->displayError('404');
+                                return true;
+                                break;
+                        }
+                        $this->smarty->assign('path', $linkpath);
+                        $this->smarty->assign('content', $content);
+                        $nav = array();
+                        if($user->can('admin_view')) {
+                            $nav[] = array('title' => 'Administration', 'link' => ROOT . 'game/');
+                        } else {
+                            $nav[] = array('title' => 'Übersicht', 'link' => ROOT . 'game/');
+                        }
+                        if($user->can('admin_view')) {
+                            $nav[] = array('title' => 'Benutzer &amp; Gruppen', 'link' => ROOT . 'game/users/');
+                            if($user->can('project_settings'))
+                                $nav[] = array('title' => 'Projekteinstellungen', 'link' => ROOT . 'game/settings/');
+                            $nav[] = array('title' => '');
+                        }
+                        else {
+                            if(!$user->can('admin_view', true)) {
+                                $nav[] = array('title' => 'Siedlungen', 'link' => ROOT . 'game/settlements/');
+                            }
+                            if($this->cbg->getCurrentSettlement()) {
+                                $nav[] = array('title' => '');
+                                $nav[] = array('title' => 'Siedlungsübersicht', 'link' => ROOT . 'game/settlements/current/');
+                                $nav[] = array('title' => 'Ressourcen', 'link' => ROOT . 'game/settlements/current/resources/');
+                                $nav[] = array('title' => 'Gebäude', 'link' => ROOT . 'game/settlements/current/buildings/');
+                                $nav[] = array('title' => 'Forschung', 'link' => ROOT . 'game/settlements/current/research/');
+                            }
+                            $nav[] = array('title' => '');
+                            $nav[] = array('title' => 'Spieler &amp; Statistiken', 'link' => ROOT . 'game/users/');
+                        }
+                        $nav[] = array('title' => 'Nachrichten (' . $user->getMessageCount(true) . ')', 'link' => ROOT . 'game/messages/');
+                        $nav[] = array('title' => 'Einstellungen', 'link' => ROOT . 'game/users/settings/');
+                        $this->smarty->assign('navigation', $nav);
+
+                        $info = array();
+                        if($this->cbg->isDebug()) {
+                            $info[] = 'Debug: true';
+                            $info[] = 'Querycount: ' . $this->cbg->getPDO()->getQueryCount();
+                            //$info[] = 'Querys_detailed: '.print_r($this->cbg->getPDO()->getQuerys(), true);
+                            $info[] = 'Servertime: ' . $this->cbg->getServertime();
+                        }
+                        if($user->groupOverrideActive()) {
+                            $info[] = '<a href="' . ROOT . 'game/users/override/" title="Du betrachtest diese Seite mit ' . $user->getGroup()->getName() . '-Rechten">' . $user->getGroup()->getName() . '-Rechte</span></a>';
+                        }
+                        if($this->cbg->getActiveMaintenance()) {
+                            $info[] = '<span class="error">Wartungsmodus</span>';
+                        }
+                        $string = '';
+                        $count = 0;
+                        foreach($info as $txt) {
+                            if($count)
+                                $string .= ' &laquo; ';
+                            $string .= $txt;
+                            $count++;
+                        }
+                        $this->smarty->assign('main_info', $string);
+
+                        $output = $this->smarty->fetch('cbg_game.tpl');
+                    } else {
+                        header('Location: ' . ROOT . 'login/session/');
+                        return true;
+                    }
+                    break;
+?>

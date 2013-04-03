@@ -1,0 +1,9 @@
+<cbg_building>
+	<name>Mine</name>
+	<image>mine</image>
+	<image_level>3</image_level>
+	<description>Ein Aufzug verbunden mit einem Minensystem, um Ressourcen aus dem Erdreich abzubauen.</description>
+	<value>20</value>
+	<level>3</level>
+	<is>mine</is>
+</cbg_building>

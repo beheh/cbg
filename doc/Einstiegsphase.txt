@@ -1,0 +1,101 @@
+Anforderungen an Einstiegsphase
+
+- Stabile Basis, alle Ressourcen ausreichend vorhanden
+- Erste Schritte werden ermöglicht
+- Selbstbestimmtes Spiel
+
+
+Definition der Gameplayelemente
+- Ressourcen
+	- Clonk
+	- Stein
+	- Holz
+	- (Erz/Kohle/Metall)
+- Gebäude
+	- Heimatbasis
+		- Grundlage Clonks
+		- "Freier Händler"
+	- Wohnhaus
+		- Clonks
+	- Sägewerk
+	- Mine
+	- (Forschung)
+- Land
+	- Wald
+	- Ebene
+	- Hügel?
+	- Hindernisse
+		- Berg
+		- Schlucht
+		- Wasser
+		- ...
+- Besitz
+	- Siedlungen
+	- Einflussbereich
+- Grundversorgung als Fallback
+	- Freier Händler
+	- Minimales Geldeinkommen
+- Karte
+	- 2D
+	- Grundlage: Flaches, ebenes Land
+	- 
+=> Stabile Basis errichten
+	- Grundlegende dauerhafte Ressourcenversorgung
+	- Spielkenntnis
+
+Implementierung
+- Ressourcen
+	- (An Siedlung gebunden)
+	- (Transport später leicht möglich)
+	- Startressourcen, neue Spieler werden gefesselt, erkunden das Spiel
+	- Zählbar (im zählbaren Bereich, Clonkig)
+	- Werden direkt durch Gebäudebau verbraucht
+- Gebäude
+	- (An Siedlung gebunden)
+	- Benötigen zum Bau
+		- Ressourcen (Clonks)
+		- Zeit
+		- (Upgrade möglich, aber kein Vorteil gegenüber Neubau)
+		- (Energie)
+		- (Forschung)
+
+Beispiel
+- Spieler registriert sicht
+- Spieler meldet sich an
+- Hat eine Siedlung
+	- Haus
+	- 4 Clonks
+	- Kleiner Einflussbereich (lokale kleine Blase)
+- Aufgaben
+	- Sägewerk errichten
+		- Bau in Auftrag geben
+		- Clonks zum Bau schicken
+		- Vollendung abwarten
+		- Nach Vollendung mit Clonks bestücken
+		- Holz++
+	- Mine errichten
+		- Bau in Auftrag geben
+		- Clonks zum Bau schicken
+		- Vollendung abwarten
+		- Nach Vollendung mit Clonks bestücken
+		- Vorkommen finden/abbauen
+		- Minenressourcen++
+	- Haus errichten
+		- ...
+		- Clonks++
+	- (Einflussbereich vergrößern)
+
+"Eigentliche Implementierung"
+- Siedlungen
+	- Spielergebunden
+	- Ressourcen
+		- Anzahl
+	- Namen
+- Gebäude
+	- Siedlungsgebunden
+	- Baufortschritt?
+	- Koordinaten
+- Karte
+	- Kein Eintrag, flaches, ebenes Land
+	- Landtyp
+	- Koordinaten

@@ -1,0 +1,33 @@
+<?php
+
+  /* Project */
+  $config['project']['name'] = 'cbg';
+  $config['project']['version'] = '0.69 Pre-Alpha';
+  $config['project']['copyright'] = 'cbg';
+  $config['project']['root_url'] = 'http://'.$_SERVER['HTTP_HOST'].'/';
+  $config['project']['start'] = 2009;
+  $config['project']['author'] = 'Benedict Etzel';
+
+  /* Database */
+  $config['db']['driver'] = 'mysql';
+   $config['db']['host'] = 'localhost';
+  $config['db']['user'] = 'root';
+  $config['db']['password'] = '';
+  $config['db']['database'] = 'cbg';
+
+  $config['project']['root_url'] .= 'cbg/';
+
+  /* Runtime */
+  $config['runtime']['debug'] = false;
+  $config['runtime']['cache'] = true;
+  $config['runtime']['maintenance'] = '';
+  $config['runtime']['bypass'] = '';
+  $config['runtime']['root'] = '/';
+  $config['runtime']['timezone'] = 'Europe/Berlin';
+
+  /* Security */
+  //Warning: changing any of these values will break all current passwords
+  $config['auth']['salt'] = 'cbgisawesome';
+  $config['auth']['iterations'] = 5000;
+
+?>

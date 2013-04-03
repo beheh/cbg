@@ -1,0 +1,70 @@
+/* Interface */
+
+div#content {
+    float:left;
+    margin-left:10px;
+    margin-top:10px;
+    padding:3px 15px;
+    text-align:left;
+    width:700px
+}
+
+div#sidebar {
+    float:left;
+    margin-left:10px;
+    margin-top:10px;
+    padding:0;
+    width:200px
+}
+
+div#logo {
+    padding-bottom:5px;
+    padding-top:3px;
+    text-align:center
+}
+
+nav#menu {
+    margin-top:10px;
+    padding: 7px 15px 10px 15px;
+    text-align:center;
+}
+
+/* Map */
+
+html.drag, html.drag * {
+    cursor:move;
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    -khtml-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+}
+
+html.drag body {
+    position:fixed;
+}
+
+#map {    
+    border: 1px solid #ccc;
+}
+
+#game_popup {
+    position:relative;
+    background: white;
+    border: gray solid 1px;
+    height: 44px;
+    display: inline-block;
+    box-shadow: #000 0 0 10px;
+}
+
+#game_popup div.popup_button {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border-radius: 2px;
+    border: gray 1px solid;
+    margin: 2px 2px 2px 0;
+    text-align: center;
+    vertical-align: middle;
+}

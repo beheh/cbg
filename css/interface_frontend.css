@@ -1,0 +1,71 @@
+body {
+    margin-top: 28px;
+}
+
+.form-table {
+    position: relative;
+    padding:3px 10px 25px 15px;
+    text-align:center;
+    width:250px
+}
+
+form td {
+    text-align: center;
+}
+
+form#login input, form#register input {
+    width: 150px;
+}
+
+form#login, form#register {
+    margin: 0;
+}
+
+form#login {
+    float: left;
+}
+
+div#notice {
+    display: block;
+    position: relative;
+    height: 20px;
+    width: 250px;
+    margin: 0 0 10px 0;
+    padding: 10px 0;
+    text-align: center;
+}
+
+div#center div#notice {
+    float:left;
+}
+
+div#center {
+    text-align: center;
+    margin:10px auto 0;
+    width: 700px;
+}
+
+div#introduction {
+    float:right;
+    width: 360px;
+    padding: 20px 40px 25px 40px;
+    margin: 50px 0 0 0;
+    text-align: justify;
+    line-height: 1.5em;
+}
+
+div#introduction a {
+    font-weight: bold;
+}
+
+div#register .form-table {
+    text-align: center;
+    margin:10px auto 0;
+}
+
+h1 {
+    font-family: Arial, sans-serif;
+    font-weight: normal;
+    font-size: 2em;
+    letter-spacing: 1px;
+}
